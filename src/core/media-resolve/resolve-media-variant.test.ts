@@ -672,6 +672,56 @@ describe('resolveMediaVariant over versioned results', () => {
     ).rejects.toMatchObject({ failure: 'unavailable', reason: 'paid-content' })
   })
 
+  it.each([
+    [
+      'the result',
+      [{ kind: 'unavailable', reason: 'age-gated', message: 'Confirm age' }],
+    ],
+    [
+      'the current entry',
+      [
+        {
+          kind: 'media',
+          schemaVersion: 1,
+          title: 'Collection',
+          entries: [
+            {
+              id: 'p1',
+              title: 'Part 1',
+              unavailable: { reason: 'age-gated', message: 'Confirm age' },
+            },
+          ],
+        },
+      ],
+    ],
+    [
+      'the deferred-entry follow-up',
+      [
+        {
+          kind: 'media',
+          schemaVersion: 1,
+          title: 'Collection',
+          entries: [{ id: 'p1', title: 'Part 1', current: true }],
+        },
+        { kind: 'unavailable', reason: 'age-gated', message: 'Confirm age' },
+      ],
+    ],
+  ])(
+    'carries the resolver message of an unavailable %s',
+    async (_where, results) => {
+      const host = hostReturning(...results)
+      await expect(
+        makeResolveToMux(fakeRegistry(site), host)(PAGE)
+      ).rejects.toMatchObject({
+        failure: 'unavailable',
+        reason: 'age-gated',
+        detail: 'Confirm age',
+        message:
+          'task.add.media.unavailable.unsupportedWithDetail: Confirm age',
+      })
+    }
+  )
+
   it('reports a host command timeout as a timeout failure', async () => {
     const timeout = Object.assign(new Error('timed out'), {
       code: 'plugin.command.timeout',

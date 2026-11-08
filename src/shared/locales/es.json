@@ -1066,7 +1066,8 @@
           "rateLimited": "El sitio está limitando las solicitudes. Vuelve a intentarlo más tarde.",
           "notFound": "Este contenido se eliminó o ya no existe.",
           "liveUnsupported": "Las transmisiones en directo no se pueden descargar.",
-          "unsupported": "El plugin de resolución del sitio indica que este contenido no se puede descargar."
+          "unsupported": "El plugin de resolución del sitio indica que este contenido no se puede descargar.",
+          "unsupportedWithDetail": "El plugin de resolución del sitio indica que este contenido no se puede descargar: {{detail}}"
         },
         "failure": {
           "timeout": "El plugin de resolución del sitio no respondió a tiempo. Vuelve a intentarlo más tarde.",

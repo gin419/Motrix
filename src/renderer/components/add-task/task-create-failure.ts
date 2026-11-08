@@ -5,7 +5,7 @@
 // a plugin-chain abort is not — it names an internal chain and a plugin id,
 // and the only useful action (disable that plugin) is nowhere in the text.
 
-import { MEDIA_RESOLVE_MESSAGE_KEYS } from '@shared/errors'
+import { parseMediaResolveMessage } from '@shared/errors'
 
 /** Strip the IPC envelope and error-class prefix from a rejection. */
 export function taskCreateFailureReason(error: unknown): string | null {
@@ -18,25 +18,40 @@ export function taskCreateFailureReason(error: unknown): string | null {
 }
 
 /**
- * i18n keys of CreateTask rejections the host raises only after deciding not
- * to create the task — every site-resolution failure, each explaining why.
- * Unlike a lost reply, such a rejection settles the request: nothing was
- * created, so there is nothing to confirm on retry.
+ * CreateTask rejections the host raises only after deciding not to create
+ * the task — every site-resolution failure, each explaining why with an
+ * i18n key (and, for a reason the host has no text for, the resolver's own
+ * message). Unlike a lost reply, such a rejection settles the request:
+ * nothing was created, so there is nothing to confirm on retry.
  */
-const DEFINITE_REJECTION_KEYS = MEDIA_RESOLVE_MESSAGE_KEYS
-
 export function isDefiniteRejectionKey(
   reason: string | null
 ): reason is string {
-  return reason !== null && DEFINITE_REJECTION_KEYS.has(reason)
+  return reason !== null && parseMediaResolveMessage(reason) !== null
+}
+
+export interface RejectionMessage {
+  key: string
+  values?: { detail: string }
+}
+
+/** The i18n key and interpolation values that explain a definite rejection. */
+export function definiteRejectionMessage(rejection: string): RejectionMessage {
+  const parsed = parseMediaResolveMessage(rejection)
+  if (!parsed) return { key: rejection }
+  return parsed.detail
+    ? { key: parsed.key, values: { detail: parsed.detail } }
+    : { key: parsed.key }
 }
 
 const WEB_RPC_FAILURE = /^rpc failed \d{3}: (\{.*\})$/su
 
 /**
- * The i18n key of a definite CreateTask rejection, or null when the rejection
- * leaves the outcome unknown. Electron delivers the key as the remote error
- * message; the web transport wraps the server's `{ error }` body instead.
+ * The message of a definite CreateTask rejection — its i18n key, possibly
+ * followed by the resolver's detail (see {@link definiteRejectionMessage}) —
+ * or null when the rejection leaves the outcome unknown. Electron delivers
+ * the message as the remote error message; the web transport wraps the
+ * server's `{ error }` body instead.
  */
 export function definiteTaskCreateRejection(error: unknown): string | null {
   const reason = taskCreateFailureReason(error)

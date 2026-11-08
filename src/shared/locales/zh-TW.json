@@ -1042,7 +1042,8 @@
           "rateLimited": "該網站正在限制請求。請稍後重試。",
           "notFound": "此媒體已被移除或不存在。",
           "liveUnsupported": "無法下載直播。",
-          "unsupported": "網站解析外掛回報此媒體無法下載。"
+          "unsupported": "網站解析外掛回報此媒體無法下載。",
+          "unsupportedWithDetail": "網站解析外掛回報此媒體無法下載：{{detail}}"
         },
         "failure": {
           "timeout": "網站解析外掛未能及時回應。請稍後重試。",

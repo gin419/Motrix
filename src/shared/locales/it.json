@@ -1066,7 +1066,8 @@
           "rateLimited": "Il sito sta limitando le richieste. Riprova più tardi.",
           "notFound": "Questo contenuto è stato rimosso o non esiste più.",
           "liveUnsupported": "Le dirette non possono essere scaricate.",
-          "unsupported": "Il plugin di risoluzione del sito segnala che questo contenuto non può essere scaricato."
+          "unsupported": "Il plugin di risoluzione del sito segnala che questo contenuto non può essere scaricato.",
+          "unsupportedWithDetail": "Il plugin di risoluzione del sito segnala che questo contenuto non può essere scaricato: {{detail}}"
         },
         "failure": {
           "timeout": "Il plugin di risoluzione del sito non ha risposto in tempo. Riprova più tardi.",

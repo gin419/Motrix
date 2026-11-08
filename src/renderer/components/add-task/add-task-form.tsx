@@ -71,6 +71,7 @@ import {
   rememberPendingCreate,
 } from './pending-create-inputs'
 import {
+  definiteRejectionMessage,
   definiteTaskCreateRejection,
   isDefiniteRejectionKey,
   parsePathTooLong,
@@ -123,12 +124,17 @@ function notifyTaskCreateFailure(
   notify: PlatformServices['notify'],
   reason: string | null
 ): void {
+  if (isDefiniteRejectionKey(reason)) {
+    const { key, values } = definiteRejectionMessage(reason)
+    if (values) notify('error', key, values)
+    else notify('error', key)
+    return
+  }
   if (
-    isDefiniteRejectionKey(reason) ||
-    (reason &&
-      /^task\.storage\.(incomplete|resumeFailed|errors\.(unavailable|busy|destination|conflict|engine|failed|cancelled))$/.test(
-        reason
-      ))
+    reason &&
+    /^task\.storage\.(incomplete|resumeFailed|errors\.(unavailable|busy|destination|conflict|engine|failed|cancelled))$/.test(
+      reason
+    )
   ) {
     notify('error', reason)
     return
@@ -649,14 +655,24 @@ export function AddTaskForm({
                 : null
             )
         }
-        if (firstFailureReason)
+        if (firstFailureReason) {
+          const rejection = isDefiniteRejectionKey(firstFailureReason)
+            ? definiteRejectionMessage(firstFailureReason)
+            : null
+          const text = rejection
+            ? t(rejection.key, rejection.values)
+            : firstFailureReason
           form.setError('urls', {
             type: 'submission',
-            // The textarea translates a bare key; a composed message is text.
+            // The textarea translates a bare key; a composed or interpolated
+            // message is text.
             message: unconfirmed
-              ? `${isDefiniteRejectionKey(firstFailureReason) ? t(firstFailureReason) : firstFailureReason}\n${t('task.add.submissionUnconfirmed')}`
-              : firstFailureReason,
+              ? `${text}\n${t('task.add.submissionUnconfirmed')}`
+              : rejection?.values
+                ? text
+                : firstFailureReason,
           })
+        }
         if (blockedByConflict) return
         if (failed === 0 && successes.length > 0) {
           platform.notify('info', 'task.add.created')

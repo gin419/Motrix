@@ -904,6 +904,33 @@ describe('BridgeReceiver', () => {
       }
     )
 
+    it('passes the resolver message of an unrecognized reason to the extension', async () => {
+      const translate = vi.fn(
+        (key: string, values?: Record<string, string>) =>
+          `t:${key}:${values?.detail ?? ''}`
+      )
+      const { receiver } = mediaDeps(
+        {
+          kind: 'unavailable',
+          reason: 'age-gated',
+          message: 'Confirm your age in the plugin settings',
+        },
+        { translate }
+      )
+      await expect(receiver.handle(directParams, extCtx)).rejects.toMatchObject(
+        {
+          message:
+            't:task.add.media.unavailable.unsupportedWithDetail:Confirm your age in the plugin settings',
+          data: {
+            context: {
+              reason: 'age-gated',
+              detail: 'Confirm your age in the plugin settings',
+            },
+          },
+        }
+      )
+    })
+
     it('rejects FFmpeg-only variants without FFmpeg like any media submit', async () => {
       const { deps, receiver } = mediaDeps(
         mediaResolution(

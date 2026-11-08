@@ -1,7 +1,9 @@
 import {
   ErrorCode,
   MEDIA_RESOLVE_MESSAGE_KEYS,
+  MEDIA_UNAVAILABLE_DETAIL_KEY,
   MEDIA_UNAVAILABLE_REASONS,
+  parseMediaResolveMessage,
 } from '@shared/errors'
 import enUS from '@shared/locales/en-US.json'
 import zhCN from '@shared/locales/zh-CN.json'
@@ -40,6 +42,36 @@ describe('MediaResolveError message', () => {
     })
   })
 
+  it('shows the resolver message with the generic text for an unknown reason', () => {
+    const error = new MediaResolveError(
+      'p',
+      'unavailable',
+      undefined,
+      'age-gated',
+      'Confirm your age in the plugin settings'
+    )
+    expect(error.message).toBe(
+      'task.add.media.unavailable.unsupportedWithDetail: Confirm your age in the plugin settings'
+    )
+    expect(error.localizable).toEqual({
+      key: 'task.add.media.unavailable.unsupportedWithDetail',
+      detail: 'Confirm your age in the plugin settings',
+    })
+    expect(parseMediaResolveMessage(error.message)).toEqual(error.localizable)
+  })
+
+  it('keeps the specific text of a known reason over the resolver message', () => {
+    const error = new MediaResolveError(
+      'p',
+      'unavailable',
+      undefined,
+      'login-required',
+      'members only'
+    )
+    expect(error.message).toBe('task.add.media.unavailable.loginRequired')
+    expect(error.detail).toBe('members only')
+  })
+
   it.each([
     ['command-failed', 'task.add.mediaResolveFailed'],
     ['invalid-result', 'task.add.mediaResolveFailed'],
@@ -53,7 +85,10 @@ describe('MediaResolveError message', () => {
 
   it('has every key it can raise in the eager catalogs', () => {
     expect(MEDIA_UNAVAILABLE_REASONS).toContain('geo-restricted')
-    for (const key of MEDIA_RESOLVE_MESSAGE_KEYS) {
+    for (const key of [
+      ...MEDIA_RESOLVE_MESSAGE_KEYS,
+      MEDIA_UNAVAILABLE_DETAIL_KEY,
+    ]) {
       expect(typeof lookup(enUS, key), key).toBe('string')
       expect(typeof lookup(zhCN, key), key).toBe('string')
     }

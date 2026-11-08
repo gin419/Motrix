@@ -1042,7 +1042,8 @@
           "rateLimited": "Trang web đang giới hạn yêu cầu. Hãy thử lại sau.",
           "notFound": "Nội dung này đã bị gỡ hoặc không còn tồn tại.",
           "liveUnsupported": "Không thể tải xuống phát trực tiếp.",
-          "unsupported": "Tiện ích phân giải trang web báo rằng không thể tải xuống nội dung này."
+          "unsupported": "Tiện ích phân giải trang web báo rằng không thể tải xuống nội dung này.",
+          "unsupportedWithDetail": "Tiện ích phân giải trang web báo rằng không thể tải xuống nội dung này: {{detail}}"
         },
         "failure": {
           "timeout": "Tiện ích phân giải trang web không phản hồi kịp thời. Hãy thử lại sau.",

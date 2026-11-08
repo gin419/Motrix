@@ -2864,7 +2864,8 @@
           "rateLimited": "El lloc està limitant les sol·licituds. Torneu-ho a provar més tard.",
           "notFound": "Aquest contingut s'ha eliminat o ja no existeix.",
           "liveUnsupported": "Les emissions en directe no es poden baixar.",
-          "unsupported": "El connector de resolució del lloc indica que aquest contingut no es pot baixar."
+          "unsupported": "El connector de resolució del lloc indica que aquest contingut no es pot baixar.",
+          "unsupportedWithDetail": "El connector de resolució del lloc indica que aquest contingut no es pot baixar: {{detail}}"
         },
         "failure": {
           "timeout": "El connector de resolució del lloc no ha respost a temps. Torneu-ho a provar més tard.",

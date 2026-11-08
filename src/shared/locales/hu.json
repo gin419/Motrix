@@ -1054,7 +1054,8 @@
           "rateLimited": "A webhely korlátozza a kéréseket. Próbáld újra később.",
           "notFound": "Ezt a tartalmat eltávolították, vagy már nem létezik.",
           "liveUnsupported": "Élő közvetítések nem tölthetők le.",
-          "unsupported": "A webhelyfeloldó bővítmény szerint ez a tartalom nem tölthető le."
+          "unsupported": "A webhelyfeloldó bővítmény szerint ez a tartalom nem tölthető le.",
+          "unsupportedWithDetail": "A webhelyfeloldó bővítmény szerint ez a tartalom nem tölthető le: {{detail}}"
         },
         "failure": {
           "timeout": "A webhelyfeloldó bővítmény nem válaszolt időben. Próbáld újra később.",

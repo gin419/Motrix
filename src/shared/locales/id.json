@@ -1042,7 +1042,8 @@
           "rateLimited": "Situs sedang membatasi permintaan. Coba lagi nanti.",
           "notFound": "Media ini telah dihapus atau tidak ada lagi.",
           "liveUnsupported": "Siaran langsung tidak dapat diunduh.",
-          "unsupported": "Plugin resolver situs melaporkan bahwa media ini tidak dapat diunduh."
+          "unsupported": "Plugin resolver situs melaporkan bahwa media ini tidak dapat diunduh.",
+          "unsupportedWithDetail": "Plugin resolver situs melaporkan bahwa media ini tidak dapat diunduh: {{detail}}"
         },
         "failure": {
           "timeout": "Plugin resolver situs tidak merespons tepat waktu. Coba lagi nanti.",

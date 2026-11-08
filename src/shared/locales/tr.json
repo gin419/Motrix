@@ -1054,7 +1054,8 @@
           "rateLimited": "Site istekleri sınırlıyor. Daha sonra tekrar deneyin.",
           "notFound": "Bu medya kaldırılmış veya artık mevcut değil.",
           "liveUnsupported": "Canlı yayınlar indirilemez.",
-          "unsupported": "Site çözümleyici eklentisi bu medyanın indirilemeyeceğini bildiriyor."
+          "unsupported": "Site çözümleyici eklentisi bu medyanın indirilemeyeceğini bildiriyor.",
+          "unsupportedWithDetail": "Site çözümleyici eklentisi bu medyanın indirilemeyeceğini bildiriyor: {{detail}}"
         },
         "failure": {
           "timeout": "Site çözümleyici eklentisi zamanında yanıt vermedi. Daha sonra tekrar deneyin.",

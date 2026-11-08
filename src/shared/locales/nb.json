@@ -2844,7 +2844,8 @@
           "rateLimited": "Nettstedet begrenser forespørsler. Prøv igjen senere.",
           "notFound": "Dette mediet er fjernet eller finnes ikke lenger.",
           "liveUnsupported": "Direktesendinger kan ikke lastes ned.",
-          "unsupported": "Programtillegget for nettstedsoppslag melder at dette mediet ikke kan lastes ned."
+          "unsupported": "Programtillegget for nettstedsoppslag melder at dette mediet ikke kan lastes ned.",
+          "unsupportedWithDetail": "Programtillegget for nettstedsoppslag melder at dette mediet ikke kan lastes ned: {{detail}}"
         },
         "failure": {
           "timeout": "Programtillegget for nettstedsoppslag svarte ikke i tide. Prøv igjen senere.",

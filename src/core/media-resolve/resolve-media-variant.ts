@@ -47,7 +47,8 @@ export async function resolveMediaVariant(
       outcome.pluginId,
       'unavailable',
       undefined,
-      outcome.reason
+      outcome.reason,
+      outcome.message
     )
   }
 
@@ -65,7 +66,8 @@ export async function resolveMediaVariant(
         media.pluginId,
         'unavailable',
         undefined,
-        followUp.reason
+        followUp.reason,
+        followUp.message
       )
     }
     if (followUp.kind === 'declined') {

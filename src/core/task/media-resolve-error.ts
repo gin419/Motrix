@@ -1,4 +1,10 @@
-import { AppError, ErrorCode, mediaResolveMessageKey } from '@shared/errors'
+import {
+  AppError,
+  ErrorCode,
+  type MediaResolveMessage,
+  mediaResolveMessage,
+  parseMediaResolveMessage,
+} from '@shared/errors'
 
 /**
  * - `command-failed`: activation or the resolve command threw.
@@ -15,7 +21,9 @@ import { AppError, ErrorCode, mediaResolveMessageKey } from '@shared/errors'
  *
  * The message is the i18n key that explains the failure: one per known
  * unavailability reason, one per host-side failure, and a shared key for a
- * resolver that failed or answered nonsense.
+ * resolver that failed or answered nonsense. An unavailability reason the
+ * host has no text for carries the resolver's plain-text `detail` after
+ * the generic key (see `mediaResolveMessage`).
  */
 export type MediaResolveFailure =
   | 'command-failed'
@@ -37,12 +45,19 @@ export class MediaResolveError extends AppError {
     public readonly pluginId: string,
     public readonly failure: MediaResolveFailure,
     cause?: unknown,
-    public readonly reason?: string
+    public readonly reason?: string,
+    /** The resolver's sanitized plain-text explanation, if it gave one. */
+    public readonly detail?: string
   ) {
     super(
       ErrorCode.MediaResolveFailed,
-      mediaResolveMessageKey(failure, reason),
+      mediaResolveMessage(failure, reason, detail),
       cause
     )
+  }
+
+  /** The i18n key and interpolation values of the message. */
+  get localizable(): MediaResolveMessage {
+    return parseMediaResolveMessage(this.message) ?? { key: this.message }
   }
 }

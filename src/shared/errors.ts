@@ -156,6 +156,57 @@ export const MEDIA_RESOLVE_MESSAGE_KEYS: ReadonlySet<string> = new Set([
   ),
 ])
 
+const MEDIA_UNAVAILABLE_GENERIC_KEY = 'task.add.media.unavailable.unsupported'
+
+/**
+ * The generic unavailability text followed by the resolver's own message,
+ * interpolated as `{{detail}}`.
+ */
+export const MEDIA_UNAVAILABLE_DETAIL_KEY =
+  'task.add.media.unavailable.unsupportedWithDetail'
+
+const MEDIA_DETAIL_SEPARATOR = ': '
+
+/**
+ * The message of a media resolve failure. A reason the host has no text
+ * for shows the generic text plus the resolver's sanitized plain-text
+ * message, carried after the detail key as `<key>: <detail>`; keys contain
+ * no spaces, so the first separator ends the key.
+ */
+export function mediaResolveMessage(
+  failure: string,
+  reason?: string,
+  detail?: string
+): string {
+  const key = mediaResolveMessageKey(failure, reason)
+  const text = detail?.trim()
+  return text && key === MEDIA_UNAVAILABLE_GENERIC_KEY
+    ? `${MEDIA_UNAVAILABLE_DETAIL_KEY}${MEDIA_DETAIL_SEPARATOR}${text}`
+    : key
+}
+
+export interface MediaResolveMessage {
+  key: string
+  /** The resolver's own message, for the key's `{{detail}}`. */
+  detail?: string
+}
+
+/**
+ * Split a message {@link mediaResolveMessage} produced into its i18n key and
+ * detail, or null when the message is not a media resolve failure.
+ */
+export function parseMediaResolveMessage(
+  message: string
+): MediaResolveMessage | null {
+  if (MEDIA_RESOLVE_MESSAGE_KEYS.has(message)) return { key: message }
+  const prefix = `${MEDIA_UNAVAILABLE_DETAIL_KEY}${MEDIA_DETAIL_SEPARATOR}`
+  if (!message.startsWith(prefix)) return null
+  const detail = message.slice(prefix.length).trim()
+  return detail
+    ? { key: MEDIA_UNAVAILABLE_DETAIL_KEY, detail }
+    : { key: MEDIA_UNAVAILABLE_GENERIC_KEY }
+}
+
 export enum DownloadErrorCode {
   Unknown = 'DL_UNKNOWN',
   NotFound = 'DL_NOT_FOUND',

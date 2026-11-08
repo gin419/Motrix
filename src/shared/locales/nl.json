@@ -2844,7 +2844,8 @@
           "rateLimited": "De site beperkt het aantal verzoeken. Probeer het later opnieuw.",
           "notFound": "Deze media is verwijderd of bestaat niet meer.",
           "liveUnsupported": "Livestreams kunnen niet worden gedownload.",
-          "unsupported": "De site-resolverplug-in meldt dat deze media niet kan worden gedownload."
+          "unsupported": "De site-resolverplug-in meldt dat deze media niet kan worden gedownload.",
+          "unsupportedWithDetail": "De site-resolverplug-in meldt dat deze media niet kan worden gedownload: {{detail}}"
         },
         "failure": {
           "timeout": "De site-resolverplug-in reageerde niet op tijd. Probeer het later opnieuw.",

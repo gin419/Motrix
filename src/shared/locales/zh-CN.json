@@ -1042,7 +1042,8 @@
           "rateLimited": "该网站正在限制请求。请稍后重试。",
           "notFound": "此媒体已被删除或不存在。",
           "liveUnsupported": "无法下载直播。",
-          "unsupported": "站点解析插件报告此媒体无法下载。"
+          "unsupported": "站点解析插件报告此媒体无法下载。",
+          "unsupportedWithDetail": "站点解析插件报告此媒体无法下载：{{detail}}"
         },
         "failure": {
           "timeout": "站点解析插件未能及时响应。请稍后重试。",

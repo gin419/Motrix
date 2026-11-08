@@ -2864,7 +2864,8 @@
           "rateLimited": "Site-ul limitează cererile. Încearcă din nou mai târziu.",
           "notFound": "Acest conținut a fost eliminat sau nu mai există.",
           "liveUnsupported": "Transmisiunile live nu pot fi descărcate.",
-          "unsupported": "Modulul de rezolvare a site-ului raportează că acest conținut nu poate fi descărcat."
+          "unsupported": "Modulul de rezolvare a site-ului raportează că acest conținut nu poate fi descărcat.",
+          "unsupportedWithDetail": "Modulul de rezolvare a site-ului raportează că acest conținut nu poate fi descărcat: {{detail}}"
         },
         "failure": {
           "timeout": "Modulul de rezolvare a site-ului nu a răspuns la timp. Încearcă din nou mai târziu.",

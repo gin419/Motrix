@@ -1054,7 +1054,8 @@
           "rateLimited": "Die Website begrenzt Anfragen. Versuchen Sie es später erneut.",
           "notFound": "Dieses Medium wurde entfernt oder existiert nicht mehr.",
           "liveUnsupported": "Livestreams können nicht heruntergeladen werden.",
-          "unsupported": "Laut Website-Resolver-Plugin kann dieses Medium nicht heruntergeladen werden."
+          "unsupported": "Laut Website-Resolver-Plugin kann dieses Medium nicht heruntergeladen werden.",
+          "unsupportedWithDetail": "Laut Website-Resolver-Plugin kann dieses Medium nicht heruntergeladen werden: {{detail}}"
         },
         "failure": {
           "timeout": "Das Website-Resolver-Plugin hat nicht rechtzeitig geantwortet. Versuchen Sie es später erneut.",

@@ -2864,7 +2864,8 @@
           "rateLimited": "Le site limite les requêtes. Réessayez plus tard.",
           "notFound": "Ce média a été supprimé ou n’existe plus.",
           "liveUnsupported": "Les diffusions en direct ne peuvent pas être téléchargées.",
-          "unsupported": "L’extension de résolution du site indique que ce média ne peut pas être téléchargé."
+          "unsupported": "L’extension de résolution du site indique que ce média ne peut pas être téléchargé.",
+          "unsupportedWithDetail": "L’extension de résolution du site indique que ce média ne peut pas être téléchargé : {{detail}}"
         },
         "failure": {
           "timeout": "L’extension de résolution du site n’a pas répondu à temps. Réessayez plus tard.",

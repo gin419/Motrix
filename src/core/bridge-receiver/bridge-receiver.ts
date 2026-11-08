@@ -78,11 +78,11 @@ export interface BridgeReceiverDeps {
   bridgeBus: BridgeEventBus
   localize: (code: BridgeErrorCode) => string
   /**
-   * Translate an i18n key, for the reason a site resolution failed. Absent,
-   * the key itself is the message (as `localize` returns codes on hosts
-   * without a translator).
+   * Translate an i18n key with its interpolation values, for the reason a
+   * site resolution failed. Absent, the key itself is the message (as
+   * `localize` returns codes on hosts without a translator).
    */
-  translate?: (key: string) => string
+  translate?: (key: string, values?: Record<string, string>) => string
   /**
    * Optional site resolution for direct submits. A resolved page is routed by
    * its selected variant: a direct variant stays a direct download of the
@@ -362,9 +362,11 @@ export class BridgeReceiver {
       )
     }
     const code = mediaFailureCode(error)
+    const { key, detail } = error.localizable
     return makeMdxpError(
       ErrorCodes.AdapterError,
-      this.deps.translate?.(error.message) ?? error.message,
+      this.deps.translate?.(key, detail ? { detail } : undefined) ??
+        error.message,
       {
         appCode: 'media-resolve-failed',
         retryable: code === 'transient-failure',
@@ -373,6 +375,7 @@ export class BridgeReceiver {
           failure: error.failure,
           code,
           ...(error.reason ? { reason: error.reason } : {}),
+          ...(error.detail ? { detail: error.detail } : {}),
         },
       }
     )

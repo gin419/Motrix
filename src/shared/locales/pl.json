@@ -1078,7 +1078,8 @@
           "rateLimited": "Witryna ogranicza liczbę żądań. Spróbuj ponownie później.",
           "notFound": "Ten materiał został usunięty lub już nie istnieje.",
           "liveUnsupported": "Transmisji na żywo nie można pobrać.",
-          "unsupported": "Wtyczka rozpoznawania witryny zgłasza, że tego materiału nie można pobrać."
+          "unsupported": "Wtyczka rozpoznawania witryny zgłasza, że tego materiału nie można pobrać.",
+          "unsupportedWithDetail": "Wtyczka rozpoznawania witryny zgłasza, że tego materiału nie można pobrać: {{detail}}"
         },
         "failure": {
           "timeout": "Wtyczka rozpoznawania witryny nie odpowiedziała na czas. Spróbuj ponownie później.",

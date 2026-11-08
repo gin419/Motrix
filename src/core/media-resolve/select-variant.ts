@@ -48,7 +48,8 @@ export function selectVariant(
       pluginId,
       'unavailable',
       undefined,
-      entry.unavailable.reason
+      entry.unavailable.reason,
+      entry.unavailable.message
     )
   }
   if (isEntryDeferred(entry))

@@ -1054,7 +1054,8 @@
           "rateLimited": "The site is limiting requests. Try again later.",
           "notFound": "This media was removed or no longer exists.",
           "liveUnsupported": "Live streams can’t be downloaded.",
-          "unsupported": "The site resolver plugin reports that this media can’t be downloaded."
+          "unsupported": "The site resolver plugin reports that this media can’t be downloaded.",
+          "unsupportedWithDetail": "The site resolver plugin reports that this media can’t be downloaded: {{detail}}"
         },
         "failure": {
           "timeout": "The site resolver plugin didn’t respond in time. Try again later.",
