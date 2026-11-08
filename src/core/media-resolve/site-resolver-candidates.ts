@@ -25,19 +25,69 @@ export function contributesResolveCommand(manifest: PluginManifest): boolean {
 }
 
 /**
- * A pattern that admits every host: `<all_urls>` or any pattern whose host
- * is a bare `*`.
- * Resolution runs on every pasted HTTP URL, so a resolver must name the
- * sites it handles; a match-all pattern never makes it a candidate. The
- * same plugin may still use such a pattern for its own HTTP calls.
+ * Second-level labels that registries use under a country-code TLD
+ * (`co.uk`, `com.au`, `ne.jp`, …). The host carries no public-suffix list;
+ * together with the single-label rule this covers the suffixes a resolver
+ * could claim to match most of the web.
  */
-function admitsEveryHost(pattern: string): boolean {
-  return parseHostPermissionPattern(pattern)?.host.kind === 'any'
+const REGISTRY_SECOND_LEVEL_LABELS: ReadonlySet<string> = new Set([
+  'ac',
+  'biz',
+  'co',
+  'com',
+  'edu',
+  'go',
+  'gob',
+  'gouv',
+  'gov',
+  'gv',
+  'info',
+  'ltd',
+  'mil',
+  'ne',
+  'net',
+  'nic',
+  'nom',
+  'or',
+  'org',
+  'plc',
+  'sch',
+])
+
+/**
+ * Whether a `*.<suffix>` wildcard covers a whole public suffix rather than
+ * one site: a single label (`*.com`), a registry second level under a
+ * country code (`*.co.uk`), or numeric labels only.
+ */
+function isPublicSuffixWildcard(suffix: string): boolean {
+  const labels = suffix.split('.')
+  if (labels.length === 1) return true
+  if (labels.every((label) => /^\d+$/.test(label))) return true
+  return (
+    labels.length === 2 &&
+    REGISTRY_SECOND_LEVEL_LABELS.has(labels[0] ?? '') &&
+    /^[a-z]{2}$/.test(labels[1] ?? '')
+  )
+}
+
+/**
+ * A pattern that claims every host, or every host under a public suffix:
+ * `<all_urls>`, a bare `*` host, or `*.com` / `*.co.uk`.
+ * Resolution runs on every pasted HTTP URL, so a resolver must name the
+ * sites it handles; such a pattern never makes it a candidate. The same
+ * plugin may still use the pattern for its own HTTP calls.
+ */
+function claimsTooManyHosts(pattern: string): boolean {
+  const host = parseHostPermissionPattern(pattern)?.host
+  if (!host) return false
+  if (host.kind === 'any') return true
+  return host.kind === 'subdomain' && isPublicSuffixWildcard(host.value)
 }
 
 /**
  * Enabled site resolvers with a resolve command whose manifest
- * hostPermissions — match-all patterns excluded — admit `url`, in a
+ * hostPermissions — match-all and public-suffix patterns excluded — admit
+ * `url`, in a
  * deterministic order: builtin origin before community, then by id. No
  * plugin id is hardcoded — the host ships no site knowledge; a resolver
  * contributes its own hostPermissions.
@@ -54,7 +104,7 @@ export function siteResolverCandidates(
         (e.manifest.categories ?? []).includes('site-resolver') &&
         contributesResolveCommand(e.manifest) &&
         urlMatchesHostPermissions(
-          e.manifest.hostPermissions?.filter((p) => !admitsEveryHost(p)),
+          e.manifest.hostPermissions?.filter((p) => !claimsTooManyHosts(p)),
           url
         )
     )

@@ -35,6 +35,33 @@ describe('siteResolverCandidates', () => {
     }
   )
 
+  it.each([
+    ['*://*.com/*', 'https://bank.example.com/statement.pdf'],
+    ['https://*.test/*', PAGE],
+    ['*://*.co.uk/*', 'https://shop.example.co.uk/item'],
+    ['*://*.com.au/*', 'https://news.example.com.au/a'],
+    ['*://*.ne.jp/*', 'https://www.example.ne.jp/a'],
+  ])(
+    'never offers a resolver that claims the public suffix of %s',
+    (pattern, url) => {
+      expect(
+        siteResolverCandidates(
+          registry(resolver('example.suffix', [pattern])),
+          url
+        )
+      ).toEqual([])
+    }
+  )
+
+  it.each([
+    ['*://*.media.test/*', PAGE],
+    ['*://*.example.co.uk/*', 'https://shop.example.co.uk/item'],
+    ['*://*.video.example/*', 'https://www.video.example/watch/1'],
+  ])('offers a resolver that names its site with %s', (pattern, url) => {
+    const named = resolver('example.named', [pattern])
+    expect(siteResolverCandidates(registry(named), url)).toEqual([named])
+  })
+
   it('matches a resolver on its named hosts even next to a match-all pattern', () => {
     const named = resolver('example.media-resolver', [
       '*://*/*',
