@@ -197,7 +197,8 @@ function commandCancelledError(commandId: string): PluginCodedError {
 /** True when `error` is a command call that hit its timeout. */
 export function isCommandTimeoutError(error: unknown): boolean {
   return (
-    error instanceof PluginCodedError && error.code === COMMAND_TIMEOUT_CODE
+    error instanceof Error &&
+    (error as { code?: unknown }).code === COMMAND_TIMEOUT_CODE
   )
 }
 

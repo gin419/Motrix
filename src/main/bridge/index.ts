@@ -43,11 +43,9 @@ import type { BridgeReceiverDeps } from '@core/bridge-receiver/bridge-receiver'
 import { BridgeReceiver } from '@core/bridge-receiver/bridge-receiver'
 import { BridgeStreamSource } from '@core/bridge-receiver/bridge-stream-source'
 import { getLogger } from '@core/logger'
-import { urlMatchesHostPermissions } from '@core/plugin/hooks/eligibility'
-import type { PluginHost } from '@core/plugin/host/plugin-host'
-import type { PluginRegistry } from '@core/plugin/plugin-registry'
+import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import { makeResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { handleCreateTask } from '@core/task/create-task-handler'
-import { MediaResolveError } from '@core/task/media-resolve-error'
 import { Notifications } from '@motrix/mdxp'
 import {
   BridgeCommands,
@@ -62,11 +60,9 @@ import {
   type ResolvePairResult,
 } from '@shared/protocol/bridge'
 import type { BridgeSettings } from '@shared/schemas/bridge-settings'
-import type { PluginManifest } from '@shared/types/plugin'
 import type { TaskActivityRecorder } from '@shared/types/task-activity'
 import { app, ipcMain } from 'electron'
 import { CancellationTokenSource } from 'vscode-jsonrpc'
-import { z } from 'zod'
 import { registerTrustedIpcHandler } from '../ipc/trusted-ipc'
 import { i18n } from '../lib/i18n'
 import { getPortableProfile } from '../platform/portable-profile'
@@ -90,153 +86,6 @@ import {
 import { recoverDefaultWindowsDesktopBridgeResidue } from './windows-desktop-startup-recovery'
 
 const nativeMessagingLog = getLogger('native-messaging')
-const resolveLog = getLogger('media-resolve')
-
-/**
- * A plugin contributes to the mux pre-resolve seam when it is an enabled
- * `site-resolver` that declares a PUBLIC command whose id is
- * `${manifest.id}.resolve` — the resolve-command marker.
- *
- * Keying off this marker (not the `site-resolver` category alone) is the
- * load-bearing distinction learned in A1: a plugin can be a `site-resolver`
- * whose hostPermissions match all URLs and still have NO resolve command —
- * motrix.scraper-hook (since retired from the built-in set) was exactly that,
- * working through the `beforeCreate` hook rather than the mux command seam.
- * Deriving seam membership from the category alone would let such a plugin
- * collapse routing to match-everything and send every download through a
- * resolver VM.
- */
-function contributesResolveCommand(manifest: PluginManifest): boolean {
-  const commands = manifest.contributes?.commands ?? []
-  const marker = `${manifest.id}.resolve`
-  return commands.some((c) => c.public === true && c.id === marker)
-}
-
-/**
- * Build the `resolveToMux` factory for BridgeReceiver. Enumerates enabled
- * site-resolver plugins that contribute a `${id}.resolve` command and whose
- * manifest hostPermissions admit the URL, then tries them in a deterministic
- * order (builtin origin before community, then by id) until one returns a mux
- * pair. No plugin id is hardcoded — the official host ships zero site knowledge;
- * a community resolver contributes its own hostPermissions once installed.
- *
- * Outcomes:
- * - empty candidate set, or every candidate returned `null` (an explicit
- *   decline) → null, and the caller proceeds with the plain download;
- * - a candidate returns a valid mux result → that result (first one wins);
- * - otherwise, when at least one candidate threw, timed out, or returned an
- *   invalid result → throws the first `MediaResolveError`. A URL that a
- *   resolver claimed must never silently degrade to downloading the page.
- */
-export function makeResolveToMux(
-  pluginRegistry: PluginRegistry,
-  pluginHost: PluginHost
-): (
-  url: string,
-  cookieHeader?: string
-) => Promise<{
-  videoUrl: string
-  audioUrl: string
-  container: 'mp4' | 'mkv'
-  headers?: Record<string, string>
-  title?: string
-} | null> {
-  return async (url: string, cookieHeader?: string) => {
-    const candidates = pluginRegistry
-      .entries()
-      .filter(
-        (e) =>
-          e.enabled &&
-          (e.manifest.categories ?? []).includes('site-resolver') &&
-          contributesResolveCommand(e.manifest) &&
-          urlMatchesHostPermissions(e.manifest.hostPermissions, url)
-      )
-      .sort((a, b) => {
-        // Deterministic: builtin origin first, then id lexicographic.
-        if (a.origin !== b.origin) return a.origin === 'builtin' ? -1 : 1
-        return a.manifest.id < b.manifest.id
-          ? -1
-          : a.manifest.id > b.manifest.id
-            ? 1
-            : 0
-      })
-
-    let firstFailure: MediaResolveError | null = null
-    for (const e of candidates) {
-      const id = e.manifest.id
-      // Activate + invoke; a failure is remembered and the next candidate is
-      // tried. Pass cookies only when present (e.g. bilibili HD) — a
-      // resolver whose argsSchema omits `cookies` (additionalProperties:false)
-      // must not receive an undefined key, so use a conditional spread.
-      let res: unknown
-      try {
-        await pluginHost.activate(id)
-        const invokeArgs = cookieHeader
-          ? { url, cookies: cookieHeader }
-          : { url }
-        res = await pluginHost.invokeCommand(id, `${id}.resolve`, invokeArgs)
-      } catch (err) {
-        resolveLog.warn(
-          {
-            pluginId: id,
-            host: safeUrlHost(url),
-            err: err instanceof Error ? err.message : String(err),
-          },
-          'site resolver failed'
-        )
-        firstFailure ??= new MediaResolveError(id, 'command-failed', err)
-        continue
-      }
-      // null / undefined → the resolver declined this URL; try the next.
-      if (res === null || res === undefined) continue
-      const parsed = muxResolveResultSchema.safeParse(res)
-      if (!parsed.success) {
-        resolveLog.warn(
-          { pluginId: id, host: safeUrlHost(url) },
-          'site resolver returned an unsupported result'
-        )
-        firstFailure ??= new MediaResolveError(id, 'invalid-result')
-        continue
-      }
-      const r = parsed.data
-      return {
-        videoUrl: r.video.url,
-        audioUrl: r.audio.url,
-        container: r.container ?? 'mp4',
-        ...(r.video.headers ? { headers: r.video.headers } : {}),
-        ...(r.title ? { title: r.title } : {}),
-      }
-    }
-    if (firstFailure) throw firstFailure
-    return null
-  }
-}
-
-/**
- * The only resolve result shape this host can route today. Plugin output is
- * untrusted, so it is validated before any field reaches task creation.
- * Optional fields accept `null` as well as absence: plugin results cross the
- * QuickJS boundary as JSON-like values, where a missing value is commonly
- * written as `null` (e.g. `title: data?.title ?? null`).
- */
-const muxResolveResultSchema = z.object({
-  kind: z.literal('mux'),
-  video: z.object({
-    url: z.string().min(1),
-    headers: z.record(z.string(), z.string()).nullish(),
-  }),
-  audio: z.object({ url: z.string().min(1) }),
-  container: z.enum(['mp4', 'mkv']).nullish(),
-  title: z.string().nullish(),
-})
-
-function safeUrlHost(url: string): string | null {
-  try {
-    return new URL(url).host
-  } catch {
-    return null
-  }
-}
 
 function camelize(code: string): string {
   return code.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())
@@ -511,10 +360,8 @@ export async function bootstrapBridge(args: {
   // engine, so a submit racing SessionManager.restore() can't get clobbered
   // by its clear() + orphan re-adopt. Optional — Node shell / tests omit it.
   waitForReady?: BridgeReceiverDeps['waitForReady']
-  // Plugin subsystem — used to build the resolveToMux pre-resolver
-  // (youtube + bilibili → mux task via the url-resolver plugin).
-  pluginRegistry: PluginRegistry
-  pluginHost: PluginHost
+  /** Process-scoped site resolution, shared with the desktop Add-Task path. */
+  mediaResolve: MediaResolveService
   /** `bridge.fixedPort` (port policy, §4) + `bridge.instanceId` (the §4.1
    *  discovery routing hint) from persisted settings. */
   bridgeSettings: BridgeSettings
@@ -641,13 +488,9 @@ export async function bootstrapBridge(args: {
     const localize = (code: string) =>
       t(`bridge.receiver.error.${camelize(code)}`)
 
-    // Build the resolver once — shared between BridgeReceiver (extension submit-
-    // path) and the BridgeRuntime surface (desktop Add-Task path). A single
-    // instance ensures both paths see the same plugin registry state.
-    const resolveToMuxFn = makeResolveToMux(
-      args.pluginRegistry,
-      args.pluginHost
-    )
+    // Build the mux adapter once — shared between BridgeReceiver (extension
+    // submit path) and the BridgeRuntime surface (desktop Add-Task path).
+    const resolveToMuxFn = makeResolveToMux(args.mediaResolve)
     const receiver = new BridgeReceiver({
       mediaMetaStore: args.mediaMetaStore,
       getDefaultSaveDir: args.getDefaultSaveDir,

@@ -45,6 +45,7 @@ import {
 } from '@core/legacy-import/legacy-task-policy'
 import { newTaskId } from '@core/lib/ids'
 import { getLogger } from '@core/logger'
+import { makeMediaResolveService } from '@core/media-resolve/media-resolve-service'
 import { registerEngineCompatibilitySubscriber } from '@core/notifications/engine-compatibility-subscriber'
 import { registerEngineFailureSubscriber } from '@core/notifications/engine-failure-subscriber'
 import { NotificationCenter } from '@core/notifications/notification-center'
@@ -2247,6 +2248,14 @@ async function initializeMainProcess(): Promise<void> {
     ),
   })
   pluginHost = activePluginHost
+  // Process-scoped site resolution: one service over the live registry and
+  // host, shared by every resolve consumer in this shell.
+  const mediaResolve = makeMediaResolveService({
+    registry: pluginRegistry,
+    host: activePluginHost,
+    pluginLog: (pluginId) => pluginCapHost.createLog(pluginId),
+    log: getLogger('media-resolve'),
+  })
   pluginGrants.bindPolicyBarrier(
     activePluginHost.applyPolicyMutation.bind(activePluginHost)
   )
@@ -2949,9 +2958,7 @@ async function initializeMainProcess(): Promise<void> {
       runTaskMutation: (taskIds, operation) =>
         activeTaskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
       trackAsyncWork: (operation) => mainProcessWork.run(operation),
-      pluginRegistry,
-      // biome-ignore lint/style/noNonNullAssertion: pluginHost is assigned before bridgeManager.start()
-      pluginHost: pluginHost!,
+      mediaResolve,
     })
   }
   bridgeManager = new BridgeManager(

@@ -158,8 +158,10 @@ function args(): Parameters<typeof bootstrapBridge>[0] {
     recordTransition: vi.fn(async () => {}),
     runTaskMutation: async (_taskIds, operation) => operation(),
     trackAsyncWork: (operation) => operation(),
-    pluginRegistry: { entries: () => [] } as never,
-    pluginHost: {} as never,
+    mediaResolve: {
+      match: () => [],
+      resolve: async () => ({ kind: 'declined' }),
+    },
   }
 }
 

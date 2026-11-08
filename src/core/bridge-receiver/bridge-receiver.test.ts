@@ -677,6 +677,22 @@ describe('BridgeReceiver', () => {
       expect(deps.createTask).not.toHaveBeenCalled()
     })
 
+    it('keeps a resolver timeout retryable, as it was before timeouts had their own failure', async () => {
+      const resolveToMux = vi.fn(async () => {
+        throw new MediaResolveError('example.media-resolver', 'timeout')
+      })
+      const deps = fakeDeps({ resolveToMux })
+      const r = new BridgeReceiver(deps as never)
+
+      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
+        data: {
+          appCode: 'media-resolve-failed',
+          retryable: true,
+          context: { failure: 'timeout' },
+        },
+      })
+    })
+
     it.each([
       ['a non-http scheme', 'ftp://cdn.example/video.m4s'],
       ['embedded credentials', 'https://user:secret@cdn.example/video.m4s'],

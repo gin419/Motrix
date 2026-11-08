@@ -392,7 +392,9 @@ export class BridgeReceiver {
             'Media page could not be resolved',
             {
               appCode: 'media-resolve-failed',
-              retryable: error.failure === 'command-failed',
+              retryable:
+                error.failure === 'command-failed' ||
+                error.failure === 'timeout',
               context: { pluginId: error.pluginId, failure: error.failure },
             }
           )

@@ -1,7 +1,8 @@
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { AppError, ErrorCode } from '@shared/errors'
 import { describe, expect, it, vi } from 'vitest'
-import { makeResolveToMux } from './index'
+import { makeMediaResolveService } from './media-resolve-service'
+import { makeResolveToMux as makeAdapter } from './resolve-to-mux'
 
 // Build a fake registry entry shaped like PluginRegistry.entries() rows:
 // { manifest, origin, enabled }. A site-resolver contributes to the mux seam
@@ -39,12 +40,16 @@ function plugin(spec: {
   }
 }
 
+function makeResolveToMux(registry: any, host: any) {
+  return makeAdapter(makeMediaResolveService({ registry, host }))
+}
+
 function fakeRegistry(...plugins: ReturnType<typeof plugin>[]) {
   return { entries: () => plugins } as any
 }
 
-const BILI = 'https://www.bilibili.com/video/BV1xx411c7mD'
-const YT = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+const PAGE = 'https://www.media.test/watch/abc123'
+const OTHER_PAGE = 'https://www.other-media.test/watch?v=xyz'
 
 describe('makeResolveToMux — generalized multi-resolver routing', () => {
   it('routes to an enabled site-resolver that declares <id>.resolve and whose hostPermissions admit the url', async () => {
@@ -62,26 +67,25 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
     const resolve = makeResolveToMux(
       fakeRegistry(
         plugin({
-          id: 'community.bilibili-resolver',
-          hostPermissions: ['*://*.bilibili.com/*'],
+          id: 'example.media-resolver',
+          hostPermissions: ['*://*.media.test/*'],
         })
       ),
       pluginHost
     )
-    expect(await resolve(BILI)).toEqual({
+    expect(await resolve(PAGE)).toEqual({
       videoUrl: 'https://cdn/v.m4s',
       audioUrl: 'https://cdn/a.m4s',
       container: 'mp4',
       headers: { Referer: 'https://x' },
       title: 'T',
     })
-    expect(pluginHost.activate).toHaveBeenCalledWith(
-      'community.bilibili-resolver'
-    )
+    expect(pluginHost.activate).toHaveBeenCalledWith('example.media-resolver')
     expect(invokeCommand).toHaveBeenCalledWith(
-      'community.bilibili-resolver',
-      'community.bilibili-resolver.resolve',
-      { url: BILI }
+      'example.media-resolver',
+      'example.media-resolver.resolve',
+      { url: PAGE },
+      { timeoutMs: 45_000 }
     )
   })
 
@@ -106,7 +110,7 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
       pluginHost
     )
     expect(await resolve('https://example.com/file.zip')).toBeNull()
-    expect(await resolve(BILI)).toBeNull()
+    expect(await resolve(PAGE)).toBeNull()
     expect(invokeCommand).not.toHaveBeenCalled()
   })
 
@@ -118,12 +122,12 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
         plugin({
           id: 'community.thing',
           categories: ['post-action'],
-          hostPermissions: ['*://*.bilibili.com/*'],
+          hostPermissions: ['*://*.media.test/*'],
         })
       ),
       pluginHost
     )
-    expect(await resolve(BILI)).toBeNull()
+    expect(await resolve(PAGE)).toBeNull()
     expect(invokeCommand).not.toHaveBeenCalled()
   })
 
@@ -133,14 +137,14 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
     const resolve = makeResolveToMux(
       fakeRegistry(
         plugin({
-          id: 'community.bilibili-resolver',
-          hostPermissions: ['*://*.bilibili.com/*'],
+          id: 'example.media-resolver',
+          hostPermissions: ['*://*.media.test/*'],
           enabled: false,
         })
       ),
       pluginHost
     )
-    expect(await resolve(BILI)).toBeNull()
+    expect(await resolve(PAGE)).toBeNull()
     expect(invokeCommand).not.toHaveBeenCalled()
   })
 
@@ -150,13 +154,13 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
     const resolve = makeResolveToMux(
       fakeRegistry(
         plugin({
-          id: 'community.bilibili-resolver',
-          hostPermissions: ['*://*.bilibili.com/*'],
+          id: 'example.media-resolver',
+          hostPermissions: ['*://*.media.test/*'],
         })
       ),
       pluginHost
     )
-    expect(await resolve(YT)).toBeNull()
+    expect(await resolve(OTHER_PAGE)).toBeNull()
     expect(invokeCommand).not.toHaveBeenCalled()
   })
 
@@ -173,8 +177,8 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
       ),
       pluginHost
     )
-    expect(await resolve(BILI)).toBeNull()
-    expect(await resolve(YT)).toBeNull()
+    expect(await resolve(PAGE)).toBeNull()
+    expect(await resolve(OTHER_PAGE)).toBeNull()
     expect(invokeCommand).not.toHaveBeenCalled()
   })
 
@@ -270,17 +274,18 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
     const resolve = makeResolveToMux(
       fakeRegistry(
         plugin({
-          id: 'community.bilibili-resolver',
-          hostPermissions: ['*://*.bilibili.com/*'],
+          id: 'example.media-resolver',
+          hostPermissions: ['*://*.media.test/*'],
         })
       ),
       pluginHost
     )
-    await resolve(BILI, 'SESSDATA=x')
+    await resolve(PAGE, 'session=x')
     expect(invokeCommand).toHaveBeenCalledWith(
-      'community.bilibili-resolver',
-      'community.bilibili-resolver.resolve',
-      { url: BILI, cookies: 'SESSDATA=x' }
+      'example.media-resolver',
+      'example.media-resolver.resolve',
+      { url: PAGE, cookies: 'session=x' },
+      { timeoutMs: 45_000 }
     )
   })
 
@@ -457,5 +462,150 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
       expect(await resolve('https://example.com/file.zip')).toBeNull()
       expect(invokeCommand).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('makeResolveToMux over versioned results', () => {
+  const site = plugin({
+    id: 'example.media-resolver',
+    hostPermissions: ['*://*.media.test/*'],
+  })
+  const mux = (tag: string) => ({
+    kind: 'mux',
+    video: { url: `https://cdn.media.test/${tag}/v.m4s` },
+    audio: { url: `https://cdn.media.test/${tag}/a.m4s` },
+  })
+  const hostReturning = (...results: unknown[]) => {
+    const invokeCommand = vi.fn()
+    for (const result of results) invokeCommand.mockResolvedValueOnce(result)
+    return {
+      activate: vi.fn().mockResolvedValue(undefined),
+      invokeCommand,
+    } as any
+  }
+
+  it('routes the best variant of the current entry', async () => {
+    const host = hostReturning({
+      kind: 'media',
+      schemaVersion: 1,
+      title: 'Collection',
+      entries: [
+        {
+          id: 'p1',
+          title: 'Part 1',
+          variants: [
+            { id: 'a', label: 'A', container: 'mp4', source: mux('p1') },
+          ],
+        },
+        {
+          id: 'p2',
+          title: 'Part 2',
+          current: true,
+          variants: [
+            { id: 'hi', label: '4K', container: 'mkv', locked: 'premium' },
+            { id: 'mid', label: '1080P', container: 'mkv', source: mux('p2') },
+          ],
+        },
+      ],
+    })
+    expect(await makeResolveToMux(fakeRegistry(site), host)(PAGE)).toEqual({
+      videoUrl: 'https://cdn.media.test/p2/v.m4s',
+      audioUrl: 'https://cdn.media.test/p2/a.m4s',
+      container: 'mkv',
+      title: 'Collection',
+    })
+  })
+
+  it('fetches a deferred current entry once, pinned to the same plugin', async () => {
+    const host = hostReturning(
+      {
+        kind: 'media',
+        schemaVersion: 1,
+        title: 'Collection',
+        entries: [{ id: 'p1', title: 'Part 1', current: true }],
+      },
+      {
+        kind: 'media',
+        schemaVersion: 1,
+        title: 'Collection',
+        entries: [
+          {
+            id: 'p1',
+            title: 'Part 1',
+            variants: [
+              { id: 'a', label: 'A', container: 'mp4', source: mux('p1') },
+            ],
+          },
+        ],
+      }
+    )
+    const other = plugin({
+      id: 'example.second-resolver',
+      hostPermissions: ['*://*.media.test/*'],
+    })
+    const result = await makeResolveToMux(fakeRegistry(site, other), host)(
+      PAGE,
+      'session=x'
+    )
+    expect(result?.videoUrl).toBe('https://cdn.media.test/p1/v.m4s')
+    expect(host.invokeCommand).toHaveBeenCalledTimes(2)
+    expect(host.invokeCommand.mock.calls[1]).toEqual([
+      'example.media-resolver',
+      'example.media-resolver.resolve',
+      { url: PAGE, cookies: 'session=x', entryIds: ['p1'] },
+      { timeoutMs: 30_000 },
+    ])
+  })
+
+  it('rejects a best variant that is not a mux pair as no-playable-variant', async () => {
+    const host = hostReturning({
+      kind: 'media',
+      schemaVersion: 1,
+      title: 'Collection',
+      entries: [
+        {
+          id: 'p1',
+          title: 'Part 1',
+          variants: [
+            {
+              id: 'hls',
+              label: 'HLS',
+              container: 'ts',
+              source: {
+                kind: 'hls',
+                manifest: { url: 'https://cdn.media.test/master.m3u8' },
+              },
+            },
+            { id: 'mux', label: 'Mux', container: 'mp4', source: mux('p1') },
+          ],
+        },
+      ],
+    })
+    await expect(
+      makeResolveToMux(fakeRegistry(site), host)(PAGE)
+    ).rejects.toMatchObject({
+      pluginId: 'example.media-resolver',
+      failure: 'no-playable-variant',
+    })
+  })
+
+  it('turns an unavailable result into an unavailable failure with its reason', async () => {
+    const host = hostReturning({ kind: 'unavailable', reason: 'paid-content' })
+    await expect(
+      makeResolveToMux(fakeRegistry(site), host)(PAGE)
+    ).rejects.toMatchObject({ failure: 'unavailable', reason: 'paid-content' })
+  })
+
+  it('reports a host command timeout as a timeout failure', async () => {
+    const timeout = Object.assign(new Error('timed out'), {
+      code: 'plugin.command.timeout',
+    })
+    const host = {
+      activate: vi.fn().mockResolvedValue(undefined),
+      invokeCommand: vi.fn().mockRejectedValue(timeout),
+    } as any
+    await expect(
+      makeResolveToMux(fakeRegistry(site), host)(PAGE)
+    ).rejects.toMatchObject({ failure: 'timeout' })
   })
 })
