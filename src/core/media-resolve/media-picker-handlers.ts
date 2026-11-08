@@ -126,6 +126,7 @@ async function resolveMediaPreview(
       media.resolution.entries.filter(isEntryDeferred).map((e) => e.id)
     )
     const entryIds = (request.entryIds ?? []).filter((id) => deferred.has(id))
+    let loaded: ResolvedMedia | null = null
     if (entryIds.length > 0) {
       const followUp = await deps.service.resolve(url, {
         entryIds,
@@ -145,25 +146,37 @@ async function resolveMediaPreview(
       if (followUp.kind === 'declined') {
         throw new MediaResolveError(media.pluginId, 'invalid-result')
       }
-      media = mergeResolvedEntries(media, followUp.media)
+      loaded = followUp.media
+      media = mergeResolvedEntries(media, loaded)
     }
 
     const ffmpegAvailable = await deps.isFfmpegAvailable()
     if (signal.aborted) return { status: 'cancelled' }
     let record: StoredResolution
     if (!previous) record = deps.store.put(media, owner.id)
-    else if (media === previous.media) record = previous
     else {
-      record =
-        deps.store.replace(previous.id, media) ??
-        deps.store.put(media, owner.id)
+      // Build on the record as it is now: a concurrent extension of the
+      // same resolution may have loaded other entries meanwhile.
+      const current = deps.store.get(previous.id, owner.id)
+      const live = current?.media.sourceUrl === url ? current : null
+      if (!loaded) record = live ?? previous
+      else {
+        record =
+          (live &&
+            deps.store.replace(
+              live.id,
+              mergeResolvedEntries(live.media, loaded)
+            )) ??
+          deps.store.put(media, owner.id)
+      }
     }
+    const { entries } = record.media.resolution
     log.info(
       {
-        pluginId: media.pluginId,
+        pluginId: record.media.pluginId,
         host: safeHost(url),
-        entries: media.resolution.entries.length,
-        deferred: media.resolution.entries.filter(isEntryDeferred).length,
+        entries: entries.length,
+        deferred: entries.filter(isEntryDeferred).length,
         extended: entryIds.length,
       },
       'media resolve preview'
@@ -171,7 +184,7 @@ async function resolveMediaPreview(
     return {
       status: 'ok',
       preview: toMediaPreview(record, {
-        pluginName: pluginName(deps, url, media.pluginId),
+        pluginName: pluginName(deps, url, record.media.pluginId),
         ffmpegAvailable,
       }),
     }

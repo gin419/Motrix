@@ -176,6 +176,64 @@ describe('ResolveMedia', () => {
     expect(extended.entries[1].variants?.map((v) => v.id)).toEqual(['v720'])
   })
 
+  it('keeps entries loaded by concurrent extensions of one resolution', async () => {
+    const loaded = (id: string) => ({
+      id,
+      title: id,
+      variants: [
+        {
+          id: 'v720',
+          label: '720P',
+          height: 720,
+          container: 'mp4',
+          source: { kind: 'direct', stream: stream(`${id}.mp4`) },
+        },
+      ],
+    })
+    const page = (ids: string[] = []) => ({
+      kind: 'media',
+      schemaVersion: 1,
+      title: 'Series',
+      entries: ['p1', 'p2', 'p3'].map((id) =>
+        id === 'p1' || ids.includes(id) ? loaded(id) : { id, title: id }
+      ),
+    })
+    let releaseP2 = () => {}
+    const p2Gate = new Promise<void>((resolve) => {
+      releaseP2 = resolve
+    })
+    const { picker, store } = setup(async (args) => {
+      const ids = (args.entryIds as string[] | undefined) ?? []
+      if (ids.includes('p2')) await p2Gate
+      return page(ids)
+    })
+    const first = ok(
+      await picker.resolve(OWNER, { requestId: uuid(1), url: PAGE })
+    )
+    const extend = (n: number, entryId: string) =>
+      picker.resolve(OWNER, {
+        requestId: uuid(n),
+        url: PAGE,
+        resolutionId: first.resolutionId,
+        entryIds: [entryId],
+      })
+    const slowP2 = extend(2, 'p2')
+    const p3 = ok(await extend(3, 'p3'))
+    expect(p3.entries[2].variants).not.toBeNull()
+    releaseP2()
+    const p2 = ok(await slowP2)
+    // The later reply still shows the entry the earlier one loaded.
+    expect(p2.entries.map((e) => e.variants !== null)).toEqual([
+      true,
+      true,
+      true,
+    ])
+    const stored = store.get(first.resolutionId, OWNER.id)
+    expect(
+      stored?.media.resolution.entries.map((e) => e.variants !== undefined)
+    ).toEqual([true, true, true])
+  })
+
   it('does not extend a resolution owned by another client', async () => {
     const { picker, invokeCommand } = setup(() => series())
     const first = ok(
