@@ -47,6 +47,15 @@ export function muxerForOutputName(name: string): string {
 
 type SpawnImpl = (cmd: string, args: string[]) => ChildProcess
 
+/**
+ * stderr of a decoder that cannot decode on this build at all rather than of
+ * a damaged stream: the native `av1` decoder without a usable hwaccel logs
+ * "Your platform doesn't support hardware accelerated AV1 decoding" and
+ * fails every packet with ENOSYS ("Function not implemented").
+ */
+const DECODER_UNAVAILABLE =
+  /doesn't support hardware accelerated|Function not implemented/
+
 export class FfmpegService {
   private child: ChildProcess | null = null
   private aborted = false
@@ -226,6 +235,7 @@ export class FfmpegService {
     const MAX_LINE = 4096
     let errors = 0
     let noVideoStream = false
+    let decoderUnavailable = false
     let stderrPending = ''
     const acceptStderrLine = (line: string) => {
       const text = line.trim()
@@ -237,6 +247,7 @@ export class FfmpegService {
         return
       }
       if (text.includes('matches no streams')) noVideoStream = true
+      if (DECODER_UNAVAILABLE.test(text)) decoderUnavailable = true
       errors += 1
     }
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -277,7 +288,14 @@ export class FfmpegService {
         if (this.child === child) this.child = null
         if (this.aborted) return reject(new Error('mux-aborted'))
         acceptStderrLine(stderrPending)
-        resolve({ exitCode: code, frames, errors, noVideoStream, timedOut })
+        resolve({
+          exitCode: code,
+          frames,
+          errors,
+          noVideoStream,
+          decoderUnavailable,
+          timedOut,
+        })
       })
     })
   }
@@ -306,5 +324,11 @@ export interface DecodeProbeResult {
   errors: number
   /** The input has no video stream for `-map 0:v:0` to select. */
   noVideoStream: boolean
+  /**
+   * The selected decoder cannot run on this build/machine at all (e.g. the
+   * native hwaccel-only `av1` decoder on a build without libdav1d), so its
+   * errors say nothing about the file.
+   */
+  decoderUnavailable: boolean
   timedOut: boolean
 }

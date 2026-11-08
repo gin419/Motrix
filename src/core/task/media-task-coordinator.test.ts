@@ -1165,6 +1165,7 @@ describe('MediaTaskCoordinator.start', () => {
         frames: 250,
         errors: 181,
         noVideoStream: false,
+        decoderUnavailable: false,
         timedOut: false,
       })),
     }

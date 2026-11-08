@@ -323,7 +323,43 @@ describe('FfmpegService.probeDecode', () => {
       frames: 250,
       errors: 6,
       noVideoStream: false,
+      decoderUnavailable: false,
       timedOut: false,
+    })
+  })
+
+  it('flags a decoder that cannot run on this build', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.stderr.emit(
+      'data',
+      Buffer.from(
+        "[av1 @ 0x1] Your platform doesn't support hardware accelerated AV1 decoding.\n" +
+          '[vist#0:0/av1 @ 0x2] [dec:av1 @ 0x3] Error submitting packet to decoder: Function not implemented\n'
+      )
+    )
+    child.emit('close', 69)
+    await expect(p).resolves.toMatchObject({
+      exitCode: 69,
+      frames: 0,
+      errors: 2,
+      decoderUnavailable: true,
+    })
+  })
+
+  it('does not flag ordinary decode errors as an unavailable decoder', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.stderr.emit(
+      'data',
+      Buffer.from(
+        '[av1 @ 0x1] Failed to parse temporal unit.\n[vist#0:0/av1 @ 0x2] [dec:av1 @ 0x3] Error submitting packet to decoder: Invalid data found when processing input\n'
+      )
+    )
+    child.emit('close', 69)
+    await expect(p).resolves.toMatchObject({
+      exitCode: 69,
+      decoderUnavailable: false,
     })
   })
 
