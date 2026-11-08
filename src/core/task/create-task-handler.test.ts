@@ -3338,6 +3338,27 @@ describe('handleCreateTask site resolution seam', () => {
     ])
   })
 
+  it('shows beforeCreate hooks the planned name of a direct variant', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution('Clip', directVariant('https://cdn.example/360.mp4'))
+    )
+    const deps = makeDeps()
+    const runBeforeCreateHttp = vi.fn(async (ctx: { filename: string }) => ({
+      final: { ...ctx, uris: ['https://cdn.example/360.mp4'], headers: [] },
+      contributors: { headers: [] },
+      staged: { allMetadataOps: () => [] },
+    }))
+    deps.orchestrator = { runBeforeCreateHttp } as never
+    await handleCreateTask(pageRequest(), {
+      ...deps,
+      mediaResolve,
+      media: fakeMediaTarget(),
+    })
+    expect(runBeforeCreateHttp.mock.calls[0]?.[0].filename).toBe('Clip.mp4')
+    const options = deps.addUri.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(options.out).toBe('Clip.mp4.motrix')
+  })
+
   it('prefers a direct variant when FFmpeg is missing', async () => {
     const mediaResolve = fakeMediaResolve(
       mediaResolution(

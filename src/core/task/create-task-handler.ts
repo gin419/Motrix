@@ -861,7 +861,8 @@ async function handleCreateTaskUnderAdmission(
         sourceUrl: params.uris[0] ?? '',
         uris: [...params.uris],
         saveDir: effectiveSaveDir,
-        filename: desiredName,
+        // A resolved direct variant has already replaced the page's name.
+        filename: currentHttpDesiredName,
         connections: req.connections,
         headers: mediaRewritten
           ? Object.entries(params.headers ?? {}).map(([name, value]) => ({
