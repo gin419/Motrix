@@ -371,6 +371,48 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
       })
     })
 
+    it('accepts null for the optional title, container and headers', async () => {
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand: vi.fn().mockResolvedValue({
+          kind: 'mux',
+          video: { url: 'https://c/v.m4s', headers: null },
+          audio: { url: 'https://c/a.m4s' },
+          container: null,
+          title: null,
+        }),
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      expect(await resolve('https://www.site.com/x')).toEqual({
+        videoUrl: 'https://c/v.m4s',
+        audioUrl: 'https://c/a.m4s',
+        container: 'mp4',
+      })
+    })
+
+    it.each([
+      [
+        'a null video url',
+        { video: { url: null }, audio: { url: 'https://c/a' } },
+      ],
+      ['a null audio leg', { video: { url: 'https://c/v' }, audio: null }],
+    ])('still throws invalid-result for %s', async (_label, legs) => {
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand: vi.fn().mockResolvedValue({ kind: 'mux', ...legs }),
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      await expect(resolve('https://www.site.com/x')).rejects.toMatchObject({
+        failure: 'invalid-result',
+      })
+    })
+
     it('reports the first failure when a later candidate only declines', async () => {
       const invokeCommand = vi.fn(async (id: string) => {
         if (id === 'motrix.a-resolver') throw new Error('boom')

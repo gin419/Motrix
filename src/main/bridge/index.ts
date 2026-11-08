@@ -215,16 +215,19 @@ export function makeResolveToMux(
 /**
  * The only resolve result shape this host can route today. Plugin output is
  * untrusted, so it is validated before any field reaches task creation.
+ * Optional fields accept `null` as well as absence: plugin results cross the
+ * QuickJS boundary as JSON-like values, where a missing value is commonly
+ * written as `null` (e.g. `title: data?.title ?? null`).
  */
 const muxResolveResultSchema = z.object({
   kind: z.literal('mux'),
   video: z.object({
     url: z.string().min(1),
-    headers: z.record(z.string(), z.string()).optional(),
+    headers: z.record(z.string(), z.string()).nullish(),
   }),
   audio: z.object({ url: z.string().min(1) }),
-  container: z.enum(['mp4', 'mkv']).optional(),
-  title: z.string().optional(),
+  container: z.enum(['mp4', 'mkv']).nullish(),
+  title: z.string().nullish(),
 })
 
 function safeUrlHost(url: string): string | null {
