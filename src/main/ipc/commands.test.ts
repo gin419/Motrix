@@ -1633,6 +1633,154 @@ describe('buildCommandHandlers', () => {
   })
 })
 
+describe('process-scoped media wiring', () => {
+  const PAGE = 'https://video.example/watch/1'
+  const VIDEO = 'https://cdn.example/v/1080.m4s'
+  const AUDIO = 'https://cdn.example/a/hi.m4s'
+
+  function mediaCtx(bridgeRunning: boolean) {
+    const base = fakeCtx()
+    const media = {
+      mux: { dispatch: vi.fn(async () => ({ taskId: 'media-task' })) },
+      hlsDash: { dispatch: vi.fn() },
+      isFfmpegAvailable: vi.fn(async () => true),
+      getActiveSegmentGids: vi.fn((): string[] => ['seg-video', 'seg-audio']),
+      cancel: vi.fn(async () => {}),
+      stopAndDrain: vi.fn(async () => {}),
+    }
+    const mediaResolve = {
+      match: vi.fn(() => []),
+      resolve: vi.fn(async () => ({
+        kind: 'resolved' as const,
+        media: {
+          pluginId: 'example.site-resolver',
+          sourceUrl: PAGE,
+          resolvedAt: 0,
+          resolution: {
+            kind: 'media' as const,
+            schemaVersion: 1 as const,
+            title: 'Example clip',
+            entries: [
+              {
+                id: 'default',
+                title: 'Example clip',
+                current: true,
+                variants: [
+                  {
+                    id: 'default',
+                    label: 'Default',
+                    container: 'mp4' as const,
+                    source: {
+                      kind: 'mux' as const,
+                      video: {
+                        url: VIDEO,
+                        headers: { Referer: 'https://video.example/' },
+                      },
+                      audio: { url: AUDIO },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      })),
+    }
+    const ctx = {
+      ...base,
+      bridgeManager: {
+        ...base.bridgeManager,
+        current: bridgeRunning ? {} : null,
+      },
+      media,
+      mediaResolve,
+    }
+    const handlers = buildCommandHandlers(ctx as unknown as CommandContext)
+    return { ctx, media, mediaResolve, handlers }
+  }
+
+  const mediaTask = {
+    id: 'm1',
+    engineTaskId: '',
+    diskPath: '/downloads/clip.mp4',
+    saveDir: '/downloads',
+    type: TaskType.Http,
+    status: TaskStatus.Downloading,
+    torrentMetaPath: null,
+    instances: [],
+  }
+
+  it('pauses a media task through the process runtime while the bridge is off', async () => {
+    const { ctx, media, handlers } = mediaCtx(false)
+    vi.mocked(ctx.taskManager.getById).mockReturnValue(mediaTask as never)
+    const pauseTask = vi.fn(async () => {})
+    ctx.adapter.pauseTask = pauseTask as never
+
+    await expect(handlers[Commands.PauseTasks]?.(['m1'])).resolves.toEqual({
+      succeeded: ['m1'],
+      failed: [],
+    })
+    expect(media.getActiveSegmentGids).toHaveBeenCalledWith('m1')
+    expect(pauseTask).toHaveBeenCalledWith('seg-video')
+    expect(pauseTask).toHaveBeenCalledWith('seg-audio')
+    expect(pauseTask).not.toHaveBeenCalledWith('')
+  })
+
+  it('cancels the media run through the process runtime on remove while the bridge is off', async () => {
+    const { ctx, media, handlers } = mediaCtx(false)
+    vi.mocked(ctx.taskManager.getById).mockReturnValue(mediaTask as never)
+    ctx.motrixDatabase.getTask = vi.fn().mockReturnValue(null)
+
+    await expect(
+      handlers[Commands.RemoveTask]?.({ taskId: 'm1', deleteWithFiles: false })
+    ).resolves.toEqual({ ok: true })
+    expect(media.cancel).toHaveBeenCalledExactlyOnceWith('m1')
+    expect(ctx.rpcClient.forceRemove).not.toHaveBeenCalled()
+    expect(ctx.taskManager.remove).toHaveBeenCalledWith('m1')
+  })
+
+  it('dispatches a resolved desktop paste into the process mux pipeline', async () => {
+    const { ctx, media, mediaResolve, handlers } = mediaCtx(true)
+
+    await handlers[Commands.CreateTask]?.({
+      type: 'http',
+      uris: [PAGE],
+      // An existing directory, so the pre-create mkdir stays quiet.
+      saveDir: tmpdir(),
+      headers: [],
+    })
+
+    // Desktop paste carries no browser cookies to the resolver.
+    expect(mediaResolve.resolve).toHaveBeenCalledExactlyOnceWith(PAGE, {})
+    expect(media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: 'mux',
+        videoUrl: VIDEO,
+        audioUrl: AUDIO,
+        container: 'mp4',
+        sanitizedHeaders: { Referer: 'https://video.example/' },
+      })
+    )
+    expect(ctx.rpcClient.addUri).not.toHaveBeenCalled()
+  })
+
+  it('keeps desktop paste resolution off while the bridge is off', async () => {
+    const { ctx, media, mediaResolve, handlers } = mediaCtx(false)
+
+    await handlers[Commands.CreateTask]?.({
+      type: 'http',
+      uris: [PAGE],
+      // An existing directory, so the pre-create mkdir stays quiet.
+      saveDir: tmpdir(),
+      headers: [],
+    })
+
+    expect(mediaResolve.resolve).not.toHaveBeenCalled()
+    expect(media.mux.dispatch).not.toHaveBeenCalled()
+    expect(ctx.rpcClient.addUri).toHaveBeenCalledOnce()
+  })
+})
+
 describe('SetTaskBtTracker handler', () => {
   it('looks up taskId from engineGid and calls trackerManager.setBtTracker', async () => {
     const trackerManager = {

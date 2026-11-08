@@ -10,6 +10,7 @@ import {
 } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { NOOP_TASK_ACTIVITY_RECORDER } from '@core/activity'
 import {
   exchangeCredential,
   initializeParams,
@@ -38,6 +39,7 @@ import {
   makeBridgeReceiverDeps,
   makeDirectSubmit,
 } from '@test-utils/bridge-receiver'
+import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServerMediaRuntime } from '../media-runtime'
 import { bootstrapBridgeForServer, type ServerBridgeRuntime } from './bootstrap'
@@ -120,25 +122,33 @@ describe('Server extension media downloads', () => {
     )
     const publish = () =>
       eventBus.emit(Events.TaskUpdated, taskManager.getAll())
-    let receiver!: BridgeReceiver
-    const deps = makeBridgeReceiverDeps({
+    // One process-scoped runtime, as server/index.ts composes it; bridge
+    // receivers only dispatch into it.
+    const pipelines = media.createPipelines({
+      mediaMetaStore: makeMediaMetaStoreStub(),
       taskManager,
+      activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
       eventBus,
       persistTask,
-      getDefaultSaveDir: () => saveDir,
-      resolveFfmpegBinaryPath: media.resolveFfmpegBinaryPath,
-      segmentAria2: media.segmentAria2,
-      tmpRoot: media.tmpRoot,
+      pickName: async (_dir, name) => name,
       fetchManifest,
       publishTaskUpdate: publish,
       publishTaskUpdateNow: publish,
     })
+    const deps = makeBridgeReceiverDeps({
+      media: pipelines,
+      eventBus,
+      getDefaultSaveDir: () => saveDir,
+    })
     const actionDeps = {
-      ...deps,
+      taskManager,
+      persistTask,
+      publishTaskUpdate: publish,
+      publishTaskUpdateNow: publish,
       eventBus,
       adapter: adapter as never,
       log: getLogger('server-media-test'),
-      getMediaSegmentGids: (id: string) => receiver.getMediaSegmentGids(id),
+      getMediaSegmentGids: (id: string) => pipelines.getActiveSegmentGids(id),
     }
     const remove = (id: string) =>
       removeTask(
@@ -146,7 +156,7 @@ describe('Server extension media downloads', () => {
         { deleteWithFiles: false },
         {
           ...actionDeps,
-          cancelMedia: (taskId) => runtime!.cancelMedia(taskId),
+          cancelMedia: (taskId) => pipelines.cancel(taskId),
           db: {
             deleteTask: (taskId) => {
               persisted.delete(taskId)
@@ -177,7 +187,7 @@ describe('Server extension media downloads', () => {
         MOTRIX_PUBLIC_URL: 'https://motrix.example',
       }),
       createExtensionReceiver: ({ bridgeBus }) =>
-        (receiver = new BridgeReceiver({ ...deps, bridgeBus })),
+        new BridgeReceiver({ ...deps, bridgeBus }),
       readHandlerDeps: {
         taskManager,
         statsAggregator: {
@@ -237,6 +247,10 @@ describe('Server extension media downloads', () => {
     connection.onNotification(Notifications.TaskCompleted, completed)
     return {
       media,
+      pipelines,
+      pause: (id: string) => pauseTask(id, actionDeps),
+      resume: (id: string) => resumeTask(id, actionDeps),
+      remove,
       adapter,
       persisted,
       taskManager,
@@ -308,7 +322,7 @@ describe('Server extension media downloads', () => {
       })
       const { taskId } = await s.submit(kind)
       await vi.waitFor(() =>
-        expect(runtime!.getMediaSegmentGids(taskId)).toHaveLength(
+        expect(s.pipelines.getActiveSegmentGids(taskId)).toHaveLength(
           kind === 'mux' ? 2 : 1
         )
       )
@@ -353,9 +367,9 @@ describe('Server extension media downloads', () => {
       s.setBinary('/data/binaries/ffmpeg')
       const { taskId } = await s.submit('hls')
       await vi.waitFor(() =>
-        expect(runtime!.getMediaSegmentGids(taskId)).toHaveLength(1)
+        expect(s.pipelines.getActiveSegmentGids(taskId)).toHaveLength(1)
       )
-      if (action === 'shutdown') await runtime!.shutdown()
+      if (action === 'shutdown') await s.pipelines.stopAndDrain()
       else
         await s.request(
           action === 'cancel' ? Methods.DownloadCancel : Methods.TaskRemove,
@@ -367,10 +381,41 @@ describe('Server extension media downloads', () => {
       await vi.waitFor(async () =>
         expect(await readdir(s.media.tmpRoot)).toEqual([])
       )
-      expect(runtime!.getMediaSegmentGids(taskId)).toEqual([])
+      expect(s.pipelines.getActiveSegmentGids(taskId)).toEqual([])
       if (action !== 'shutdown')
         expect(s.taskManager.getById(taskId)).toBeUndefined()
       else expect(s.persisted.get(taskId)?.status).toBe(TaskStatus.Error)
     }
   )
+
+  it('keeps a running media task across a bridge stop, with pause, resume and remove still working', async () => {
+    const s = await setup()
+    s.setBinary('/data/binaries/ffmpeg')
+    const { taskId } = await s.submit('mux')
+    await vi.waitFor(() =>
+      expect(s.pipelines.getActiveSegmentGids(taskId)).toHaveLength(2)
+    )
+
+    // Turning the bridge off no longer cancels app-owned media work.
+    await runtime!.shutdown()
+    runtime = undefined
+    expect(s.adapter.forceRemoveTask).not.toHaveBeenCalled()
+    expect(s.taskManager.getById(taskId)?.status).toBe(TaskStatus.Downloading)
+    expect(s.pipelines.getActiveSegmentGids(taskId)).toHaveLength(2)
+
+    await s.pause(taskId)
+    expect(s.taskManager.getById(taskId)?.status).toBe(TaskStatus.Paused)
+    expect(s.adapter.pauseTask).toHaveBeenCalledTimes(2)
+    await s.resume(taskId)
+    expect(s.taskManager.getById(taskId)?.status).toBe(TaskStatus.Downloading)
+
+    await s.remove(taskId)
+    expect(s.adapter.forceRemoveTask).toHaveBeenCalledWith('segment-1')
+    expect(s.adapter.forceRemoveTask).toHaveBeenCalledWith('segment-2')
+    expect(s.pipelines.getActiveSegmentGids(taskId)).toEqual([])
+    expect(s.taskManager.getById(taskId)).toBeUndefined()
+    await vi.waitFor(async () =>
+      expect(await readdir(s.media.tmpRoot)).toEqual([])
+    )
+  })
 })

@@ -160,8 +160,6 @@ function extensionReceiver(): ServerExtensionReceiver {
   return {
     handle: vi.fn(async () => ({ taskId: 'submitted' })),
     cancel: vi.fn(async () => {}),
-    cancelMedia: vi.fn(async () => {}),
-    getMediaSegmentGids: vi.fn(() => []),
     restoreInflight: vi.fn(async () => {}),
     start: vi.fn(),
     stopAndDrain: vi.fn(async () => {}),

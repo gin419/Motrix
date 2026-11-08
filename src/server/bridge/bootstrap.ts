@@ -73,8 +73,6 @@ export interface ServerBridgeRuntime {
   bridgeCommandHandlers: Record<string, Handler>
   bridgeQueryHandlers: Record<string, Handler>
   shutdown: () => Promise<void>
-  cancelMedia: (taskId: string) => Promise<void>
-  getMediaSegmentGids: (taskId: string) => string[]
 }
 
 /** Extension-only download application surface. The Server composition root
@@ -83,8 +81,6 @@ export interface ServerBridgeRuntime {
 export interface ServerExtensionReceiver {
   handle: NonNullable<MethodHandlers['submitDownload']>
   cancel: (taskId: string) => Promise<void>
-  cancelMedia: (taskId: string) => Promise<void>
-  getMediaSegmentGids: (taskId: string) => string[]
   restoreInflight: () => Promise<void>
   start: () => void
   stopAndDrain: () => Promise<void>
@@ -533,9 +529,6 @@ export async function bootstrapBridgeForServer(
       localToken,
       bridgeCommandHandlers,
       bridgeQueryHandlers,
-      cancelMedia: async (taskId) => extensionReceiver?.cancelMedia(taskId),
-      getMediaSegmentGids: (taskId) =>
-        extensionReceiver?.getMediaSegmentGids(taskId) ?? [],
       shutdown: () => ownership.dispose(),
     }
   } catch (error) {

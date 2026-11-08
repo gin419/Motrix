@@ -82,8 +82,6 @@ function createReceiver(
       return { taskId }
     },
     cancel: async () => {},
-    cancelMedia: async () => {},
-    getMediaSegmentGids: () => [],
     restoreInflight: async () => {},
     start: () => {
       stopped = false

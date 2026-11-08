@@ -43,11 +43,10 @@ import type { BridgeReceiverDeps } from '@core/bridge-receiver/bridge-receiver'
 import { BridgeReceiver } from '@core/bridge-receiver/bridge-receiver'
 import { BridgeStreamSource } from '@core/bridge-receiver/bridge-stream-source'
 import { getLogger } from '@core/logger'
-import { urlMatchesHostPermissions } from '@core/plugin/hooks/eligibility'
-import type { PluginHost } from '@core/plugin/host/plugin-host'
-import type { PluginRegistry } from '@core/plugin/plugin-registry'
+import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import type { MediaRuntime } from '@core/media-resolve/media-runtime'
+import { makeResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { handleCreateTask } from '@core/task/create-task-handler'
-import { MediaResolveError } from '@core/task/media-resolve-error'
 import { Notifications } from '@motrix/mdxp'
 import {
   BridgeCommands,
@@ -62,11 +61,8 @@ import {
   type ResolvePairResult,
 } from '@shared/protocol/bridge'
 import type { BridgeSettings } from '@shared/schemas/bridge-settings'
-import type { PluginManifest } from '@shared/types/plugin'
-import type { TaskActivityRecorder } from '@shared/types/task-activity'
 import { app, ipcMain } from 'electron'
 import { CancellationTokenSource } from 'vscode-jsonrpc'
-import { z } from 'zod'
 import { registerTrustedIpcHandler } from '../ipc/trusted-ipc'
 import { i18n } from '../lib/i18n'
 import { getPortableProfile } from '../platform/portable-profile'
@@ -90,153 +86,6 @@ import {
 import { recoverDefaultWindowsDesktopBridgeResidue } from './windows-desktop-startup-recovery'
 
 const nativeMessagingLog = getLogger('native-messaging')
-const resolveLog = getLogger('media-resolve')
-
-/**
- * A plugin contributes to the mux pre-resolve seam when it is an enabled
- * `site-resolver` that declares a PUBLIC command whose id is
- * `${manifest.id}.resolve` — the resolve-command marker.
- *
- * Keying off this marker (not the `site-resolver` category alone) is the
- * load-bearing distinction learned in A1: a plugin can be a `site-resolver`
- * whose hostPermissions match all URLs and still have NO resolve command —
- * motrix.scraper-hook (since retired from the built-in set) was exactly that,
- * working through the `beforeCreate` hook rather than the mux command seam.
- * Deriving seam membership from the category alone would let such a plugin
- * collapse routing to match-everything and send every download through a
- * resolver VM.
- */
-function contributesResolveCommand(manifest: PluginManifest): boolean {
-  const commands = manifest.contributes?.commands ?? []
-  const marker = `${manifest.id}.resolve`
-  return commands.some((c) => c.public === true && c.id === marker)
-}
-
-/**
- * Build the `resolveToMux` factory for BridgeReceiver. Enumerates enabled
- * site-resolver plugins that contribute a `${id}.resolve` command and whose
- * manifest hostPermissions admit the URL, then tries them in a deterministic
- * order (builtin origin before community, then by id) until one returns a mux
- * pair. No plugin id is hardcoded — the official host ships zero site knowledge;
- * a community resolver contributes its own hostPermissions once installed.
- *
- * Outcomes:
- * - empty candidate set, or every candidate returned `null` (an explicit
- *   decline) → null, and the caller proceeds with the plain download;
- * - a candidate returns a valid mux result → that result (first one wins);
- * - otherwise, when at least one candidate threw, timed out, or returned an
- *   invalid result → throws the first `MediaResolveError`. A URL that a
- *   resolver claimed must never silently degrade to downloading the page.
- */
-export function makeResolveToMux(
-  pluginRegistry: PluginRegistry,
-  pluginHost: PluginHost
-): (
-  url: string,
-  cookieHeader?: string
-) => Promise<{
-  videoUrl: string
-  audioUrl: string
-  container: 'mp4' | 'mkv'
-  headers?: Record<string, string>
-  title?: string
-} | null> {
-  return async (url: string, cookieHeader?: string) => {
-    const candidates = pluginRegistry
-      .entries()
-      .filter(
-        (e) =>
-          e.enabled &&
-          (e.manifest.categories ?? []).includes('site-resolver') &&
-          contributesResolveCommand(e.manifest) &&
-          urlMatchesHostPermissions(e.manifest.hostPermissions, url)
-      )
-      .sort((a, b) => {
-        // Deterministic: builtin origin first, then id lexicographic.
-        if (a.origin !== b.origin) return a.origin === 'builtin' ? -1 : 1
-        return a.manifest.id < b.manifest.id
-          ? -1
-          : a.manifest.id > b.manifest.id
-            ? 1
-            : 0
-      })
-
-    let firstFailure: MediaResolveError | null = null
-    for (const e of candidates) {
-      const id = e.manifest.id
-      // Activate + invoke; a failure is remembered and the next candidate is
-      // tried. Pass cookies only when present (e.g. bilibili HD) — a
-      // resolver whose argsSchema omits `cookies` (additionalProperties:false)
-      // must not receive an undefined key, so use a conditional spread.
-      let res: unknown
-      try {
-        await pluginHost.activate(id)
-        const invokeArgs = cookieHeader
-          ? { url, cookies: cookieHeader }
-          : { url }
-        res = await pluginHost.invokeCommand(id, `${id}.resolve`, invokeArgs)
-      } catch (err) {
-        resolveLog.warn(
-          {
-            pluginId: id,
-            host: safeUrlHost(url),
-            err: err instanceof Error ? err.message : String(err),
-          },
-          'site resolver failed'
-        )
-        firstFailure ??= new MediaResolveError(id, 'command-failed', err)
-        continue
-      }
-      // null / undefined → the resolver declined this URL; try the next.
-      if (res === null || res === undefined) continue
-      const parsed = muxResolveResultSchema.safeParse(res)
-      if (!parsed.success) {
-        resolveLog.warn(
-          { pluginId: id, host: safeUrlHost(url) },
-          'site resolver returned an unsupported result'
-        )
-        firstFailure ??= new MediaResolveError(id, 'invalid-result')
-        continue
-      }
-      const r = parsed.data
-      return {
-        videoUrl: r.video.url,
-        audioUrl: r.audio.url,
-        container: r.container ?? 'mp4',
-        ...(r.video.headers ? { headers: r.video.headers } : {}),
-        ...(r.title ? { title: r.title } : {}),
-      }
-    }
-    if (firstFailure) throw firstFailure
-    return null
-  }
-}
-
-/**
- * The only resolve result shape this host can route today. Plugin output is
- * untrusted, so it is validated before any field reaches task creation.
- * Optional fields accept `null` as well as absence: plugin results cross the
- * QuickJS boundary as JSON-like values, where a missing value is commonly
- * written as `null` (e.g. `title: data?.title ?? null`).
- */
-const muxResolveResultSchema = z.object({
-  kind: z.literal('mux'),
-  video: z.object({
-    url: z.string().min(1),
-    headers: z.record(z.string(), z.string()).nullish(),
-  }),
-  audio: z.object({ url: z.string().min(1) }),
-  container: z.enum(['mp4', 'mkv']).nullish(),
-  title: z.string().nullish(),
-})
-
-function safeUrlHost(url: string): string | null {
-  try {
-    return new URL(url).host
-  } catch {
-    return null
-  }
-}
 
 function camelize(code: string): string {
   return code.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())
@@ -283,47 +132,6 @@ export interface BridgeRuntime {
    *  was taken and the bridge fell back to an ephemeral port (§4). */
   degraded: boolean
   shutdown: () => Promise<void>
-  /**
-   * The shared MuxPipeline used by BridgeReceiver. Exposed read-only so the
-   * desktop Add-Task path can reuse the SAME coordinator instance — never
-   * construct a second one (that would reintroduce the SP-1 phantom-task bug).
-   * Undefined when this runtime has no media pipeline.
-   */
-  muxPipeline:
-    | import('@core/bridge-receiver/pipelines/mux-pipeline').MuxPipeline
-    | undefined
-  /**
-   * Tear down a coordinator-managed media task's in-flight run (segment
-   * downloaders + ffmpeg + temp). Used by the remove path so removing a media
-   * task's row does not orphan its downloads. No-op once the run has finished.
-   */
-  cancelMedia: (taskId: string) => Promise<void>
-  /**
-   * Active aria2 segment gids for a coordinator-managed media task (Mux/Hls),
-   * exposed so pause/resume commands can act on the real segment downloads
-   * (the task's own engineTaskId is '' — no aria2 handle). Returns [] for any
-   * non-media / unknown / past-download-phase task.
-   */
-  getMediaSegmentGids: (taskId: string) => string[]
-  /**
-   * The resolveToMux factory (youtube/bilibili → mux pair) used by
-   * BridgeReceiver. Exposed so the desktop Add-Task path can call the same
-   * resolver without re-constructing it. Always defined when BridgeRuntime is
-   * live; the factory itself returns null for non-resolver URLs and throws
-   * MediaResolveError when a matching resolver fails.
-   * The optional cookieHeader arg is forwarded to the plugin for bilibili HD
-   * (desktop Add-Task path passes no cookies → ≤480p, by design).
-   */
-  resolveToMux: (
-    url: string,
-    cookieHeader?: string
-  ) => Promise<{
-    videoUrl: string
-    audioUrl: string
-    container: 'mp4' | 'mkv'
-    headers?: Record<string, string>
-    title?: string
-  } | null>
 }
 
 interface NativeMessagingInstallation {
@@ -465,7 +273,6 @@ export async function bootstrapBridge(args: {
     off(event: string, listener: (payload: unknown) => void): unknown
   }
   createTaskDeps: Parameters<typeof handleCreateTask>[1]
-  activityRecorder: TaskActivityRecorder
   removeTask: (taskId: string) => Promise<void>
   // Bridge magnet submits route through MagnetTracker's metadata-only fetch
   // when file selection is on — mirroring the renderer's Commands.CreateTask
@@ -486,35 +293,16 @@ export async function bootstrapBridge(args: {
   readHandlerDeps: ReadHandlerDeps
   // Spec 4 — v1 WRITE methods (pause/resume/remove/add).
   writeHandlerDeps: WriteHandlerDeps
-  // A live resolver keeps the media pipeline available when FFmpeg is
-  // configured after startup. Shells without media support omit it.
-  ffmpegBinaryPath: string | null
-  /** Re-resolves the current executable immediately before each mux. */
-  resolveFfmpegBinaryPath?: BridgeReceiverDeps['resolveFfmpegBinaryPath']
-  /** Coalesced / immediate TaskUpdated publication (TaskUpdatePublisher),
-   *  threaded through BridgeReceiver into the MediaTaskCoordinator. */
-  publishTaskUpdate: () => void
-  publishTaskUpdateNow: () => void
-  mediaMetaStore: BridgeReceiverDeps['mediaMetaStore']
-  taskManager: BridgeReceiverDeps['taskManager']
-  segmentAria2: BridgeReceiverDeps['segmentAria2']
-  tmpRoot: string
-  persistTask: BridgeReceiverDeps['persistTask']
-  persistTaskWithOccurrence?: BridgeReceiverDeps['persistTaskWithOccurrence']
-  occurrenceDispatcher?: BridgeReceiverDeps['occurrenceDispatcher']
-  parentTaskCreated: BridgeReceiverDeps['parentTaskCreated']
-  recordTransition: BridgeReceiverDeps['recordTransition']
-  runTaskMutation: BridgeReceiverDeps['runTaskMutation']
+  /** The process-scoped media runtime; the receiver dispatches into it. */
+  media: MediaRuntime
   /** Main-process admission/drain for renderer IPC and incoming download work. */
   trackAsyncWork: <T>(operation: () => Promise<T>) => Promise<T>
   // Startup barrier: submits await this before any pipeline work reaches the
   // engine, so a submit racing SessionManager.restore() can't get clobbered
   // by its clear() + orphan re-adopt. Optional — Node shell / tests omit it.
   waitForReady?: BridgeReceiverDeps['waitForReady']
-  // Plugin subsystem — used to build the resolveToMux pre-resolver
-  // (youtube + bilibili → mux task via the url-resolver plugin).
-  pluginRegistry: PluginRegistry
-  pluginHost: PluginHost
+  /** Process-scoped site resolution, shared with the desktop Add-Task path. */
+  mediaResolve: MediaResolveService
   /** `bridge.fixedPort` (port policy, §4) + `bridge.instanceId` (the §4.1
    *  discovery routing hint) from persisted settings. */
   bridgeSettings: BridgeSettings
@@ -641,15 +429,11 @@ export async function bootstrapBridge(args: {
     const localize = (code: string) =>
       t(`bridge.receiver.error.${camelize(code)}`)
 
-    // Build the resolver once — shared between BridgeReceiver (extension submit-
-    // path) and the BridgeRuntime surface (desktop Add-Task path). A single
-    // instance ensures both paths see the same plugin registry state.
-    const resolveToMuxFn = makeResolveToMux(
-      args.pluginRegistry,
-      args.pluginHost
-    )
+    // Extension submit path; desktop Add-Task builds its own adapter over the
+    // same process-scoped service.
+    const resolveToMuxFn = makeResolveToMux(args.mediaResolve)
     const receiver = new BridgeReceiver({
-      mediaMetaStore: args.mediaMetaStore,
+      media: args.media,
       getDefaultSaveDir: args.getDefaultSaveDir,
       resolveSaveDir: args.resolveSaveDir,
       recordDirectory: args.recordDirectory,
@@ -663,25 +447,12 @@ export async function bootstrapBridge(args: {
       eventBus: args.eventBus,
       bridgeBus: bus,
       localize,
-      ffmpegBinaryPath: args.ffmpegBinaryPath,
-      resolveFfmpegBinaryPath: args.resolveFfmpegBinaryPath,
-      publishTaskUpdate: args.publishTaskUpdate,
-      publishTaskUpdateNow: args.publishTaskUpdateNow,
-      taskManager: args.taskManager,
-      activityRecorder: args.activityRecorder,
-      segmentAria2: args.segmentAria2,
-      tmpRoot: args.tmpRoot,
       resolveToMux: resolveToMuxFn,
-      persistTask: args.persistTask,
-      persistTaskWithOccurrence: args.persistTaskWithOccurrence,
-      occurrenceDispatcher: args.occurrenceDispatcher,
-      parentTaskCreated: args.parentTaskCreated,
-      recordTransition: args.recordTransition,
-      runTaskMutation: args.runTaskMutation,
       ...(args.waitForReady ? { waitForReady: args.waitForReady } : {}),
     })
-    // restoreInflight() may resume coordinator-owned jobs before it rejects.
-    // Cache cleanup ownership first so every partial restore/start is drained.
+    // Register cleanup before restore/start so a partial start is undone. The
+    // receiver only stops publishing; media runs belong to the process-scoped
+    // runtime and survive a bridge stop.
     ownership.own('receiver', () => receiver.stopAndDrain())
     await receiver.restoreInflight()
     receiver.start()
@@ -1140,11 +911,6 @@ export async function bootstrapBridge(args: {
       port,
       degraded,
       shutdown: () => ownership.dispose(),
-      muxPipeline: receiver.muxPipeline,
-      getMediaSegmentGids: (taskId: string) =>
-        receiver.getMediaSegmentGids(taskId),
-      cancelMedia: (taskId: string) => receiver.cancelMedia(taskId),
-      resolveToMux: resolveToMuxFn,
     }
   } catch (error) {
     return ownership.rollback(error)

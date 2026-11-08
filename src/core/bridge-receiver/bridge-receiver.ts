@@ -1,19 +1,11 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import type { BridgeEventBus } from '@core/bridge/bridge-event-bus'
 import { IdempotencyCache } from '@core/bridge/idempotency-cache'
 import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
-import type { SegmentAria2 } from '@core/download/segment-downloader'
-import { SegmentDownloader } from '@core/download/segment-downloader'
-import { FfmpegService } from '@core/ffmpeg/ffmpeg-service'
 import { newTaskId } from '@core/lib/ids'
-import { fetchManifest } from '@core/media/manifest-fetcher'
-import { assembleSegments } from '@core/media/segment-assembler'
-import { SegmentDecryptor } from '@core/media/segment-decryptor'
+import type { MediaRuntime } from '@core/media-resolve/media-runtime'
+import type { ResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { MediaResolveError } from '@core/task/media-resolve-error'
-import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
 import { admitHttpSource } from '@core/task/source-admission'
-import type { TaskManager } from '@core/task/task-manager'
 import {
   type DownloadSubmitParams,
   ErrorCodes,
@@ -22,15 +14,12 @@ import {
 import { clientKey } from '@shared/protocol/bridge'
 import { Events } from '@shared/protocol/events'
 import type { DownloadTask } from '@shared/types/task'
-import type { TaskActivityRecorder } from '@shared/types/task-activity'
 import type { BridgeErrorCode } from './errors'
 import { BridgeReceiverError } from './errors'
 import { stripHopByHopHeaders } from './header-replay'
 import { DirectPipeline } from './pipelines/direct-pipeline'
-import { HlsDashPipeline } from './pipelines/hls-dash-pipeline'
 import { MagnetPipeline } from './pipelines/magnet-pipeline'
 import { ensureMediaExtension } from './pipelines/media-final-name'
-import { MuxPipeline } from './pipelines/mux-pipeline'
 import {
   dispatchTaskUpdates,
   type TaskNotificationSink,
@@ -55,9 +44,13 @@ export function serializeCookieHeader(
 }
 
 export interface BridgeReceiverDeps {
-  mediaMetaStore: ConstructorParameters<
-    typeof MediaTaskCoordinator
-  >[0]['mediaMetaStore']
+  /**
+   * The process-scoped HLS/DASH/mux runtime. The receiver only dispatches
+   * into it; it neither builds nor drains it, so media tasks outlive a bridge
+   * restart. Absent in shells and tests without media support, where media
+   * submits fail with `unsupported-kind`.
+   */
+  media?: MediaRuntime
   getDefaultSaveDir: AdapterDeps['getDefaultSaveDir']
   resolveSaveDir?: AdapterDeps['resolveSaveDir']
   recordDirectory?: (path: string) => Promise<unknown>
@@ -77,86 +70,15 @@ export interface BridgeReceiverDeps {
   }
   bridgeBus: BridgeEventBus
   localize: (code: BridgeErrorCode) => string
-  /** Static fallback for shells without a live FFmpeg resolver. */
-  ffmpegBinaryPath: string | null
   /**
-   * Live resolver used before accepting media and immediately before muxing.
-   * Providing it enables the pipeline even if FFmpeg is absent at startup.
-   * Defaults to the startup path for shells/tests without dynamic resolution.
+   * Optional submit-path pre-resolver for direct submits. A mux pair re-routes
+   * the submit to the media runtime's MuxPipeline; null proceeds as a direct
+   * download. A matching resolver that fails throws MediaResolveError and the
+   * submit is rejected with appCode `media-resolve-failed` instead of
+   * downloading the page as a file. Submit cookies are forwarded to the
+   * resolver only (2nd arg).
    */
-  resolveFfmpegBinaryPath?: () => Promise<string | null>
-  taskManager: TaskManager
-  activityRecorder: TaskActivityRecorder
-  /** Coalesced / immediate TaskUpdated publication (TaskUpdatePublisher),
-   *  threaded into the MediaTaskCoordinator this receiver constructs. */
-  publishTaskUpdate: () => void
-  publishTaskUpdateNow: () => void
-  segmentAria2: SegmentAria2
-  tmpRoot: string
-  /**
-   * Durable-save hook for the media coordinator's completion flip (media
-   * tasks bypass the aria2 poll loop's transition saves). Wired to the main
-   * shell's persistTask; optional so tests and the Node shell can omit it.
-   */
-  persistTask: (task: DownloadTask) => Promise<void>
-  /**
-   * Persist a media task and (when non-null) its terminal occurrence in a
-   * single durable transaction — used INSTEAD OF `persistTask` whenever a
-   * status transition qualifies for one. Optional; absence degrades to
-   * plain `persistTask`.
-   */
-  persistTaskWithOccurrence?: ConstructorParameters<
-    typeof MediaTaskCoordinator
-  >[0]['persistTaskWithOccurrence']
-  /** Delivers a just-committed terminal occurrence to in-process consumers. */
-  occurrenceDispatcher?: ConstructorParameters<
-    typeof MediaTaskCoordinator
-  >[0]['occurrenceDispatcher']
-  /**
-   * Inspector Activity parent-row barrier for coordinator-owned media tasks.
-   * The task must not enter TaskManager until this resolves.
-   */
-  parentTaskCreated?: ConstructorParameters<
-    typeof MediaTaskCoordinator
-  >[0]['parentTaskCreated']
-  /**
-   * Exact post-durable lifecycle recorder for media status transitions.
-   */
-  recordTransition?: ConstructorParameters<
-    typeof MediaTaskCoordinator
-  >[0]['recordTransition']
-  runTaskMutation?: ConstructorParameters<
-    typeof MediaTaskCoordinator
-  >[0]['runTaskMutation']
-  /**
-   * Optional override for manifest fetching. Defaults to the real fetchManifest.
-   * Inject a stub in tests to avoid network calls.
-   */
-  fetchManifest?: (
-    url: string,
-    opts: { headers?: Record<string, string> }
-  ) => Promise<string>
-  /**
-   * Optional submit-path pre-resolver. When present and the adapted URL is a
-   * YouTube watch page or bilibili page, this is called before kind-routing.
-   * If it returns a mux pair the direct submit is transparently re-routed to
-   * the MuxPipeline. Absent or returning null → direct download proceeds.
-   * A matching resolver that fails throws MediaResolveError; the submit is
-   * then rejected with appCode `media-resolve-failed` instead of downloading
-   * the page as a direct file.
-   * An optional cookieHeader (2nd arg) is forwarded when the submit carries
-   * cookies (bilibili HD path). Omitted for YouTube and desktop submits.
-   */
-  resolveToMux?: (
-    url: string,
-    cookieHeader?: string
-  ) => Promise<{
-    videoUrl: string
-    audioUrl: string
-    container: 'mp4' | 'mkv'
-    headers?: Record<string, string>
-    title?: string
-  } | null>
+  resolveToMux?: ResolveToMux
   /**
    * Optional startup gate awaited before any submit reaches a pipeline.
    * The bootstrap resolves it once engine start + SessionManager.restore()
@@ -182,9 +104,6 @@ export class BridgeReceiver {
   private readonly direct: DirectPipeline
   private readonly magnet: MagnetPipeline
   private readonly publisher: ProgressPublisher
-  private readonly hlsDash: HlsDashPipeline | undefined
-  private readonly mux: MuxPipeline | undefined
-  private readonly coordinator: MediaTaskCoordinator | undefined
   // Terminal-transition dedup for the WS push (same harness as the SSE source).
   private readonly terminalEmitted = new Map<string, string>()
   /**
@@ -217,85 +136,6 @@ export class BridgeReceiver {
       isMagnetFileSelectionEnabled: deps.isMagnetFileSelectionEnabled,
     })
     this.publisher = new ProgressPublisher(deps.bridgeBus, deps.localize)
-
-    if (deps.resolveFfmpegBinaryPath || deps.ffmpegBinaryPath !== null) {
-      const resolveFfmpegBinaryPath =
-        deps.resolveFfmpegBinaryPath ??
-        (() => Promise.resolve(deps.ffmpegBinaryPath))
-      const assertFfmpegAvailable = async () => {
-        if (!(await resolveFfmpegBinaryPath())) {
-          throw new BridgeReceiverError(
-            'unsupported-kind',
-            'ffmpeg is unavailable; configure it in Settings and retry'
-          )
-        }
-      }
-      const eventBusWithEmit = deps.eventBus as {
-        on(event: string, listener: (payload: unknown) => void): unknown
-        off(event: string, listener: (payload: unknown) => void): unknown
-        emit(event: string, payload: unknown): void
-      }
-      const tmpRoot = deps.tmpRoot
-      const coordinator = new MediaTaskCoordinator({
-        mediaMetaStore: deps.mediaMetaStore,
-        taskManager: deps.taskManager,
-        activityRecorder: deps.activityRecorder,
-        eventBus: eventBusWithEmit,
-        publishTaskUpdate: deps.publishTaskUpdate,
-        publishTaskUpdateNow: deps.publishTaskUpdateNow,
-        resolveFfmpegBinaryPath,
-        pickName: deps.pickName,
-        persist: deps.persistTask,
-        persistTaskWithOccurrence: deps.persistTaskWithOccurrence,
-        occurrenceDispatcher: deps.occurrenceDispatcher,
-        parentTaskCreated: deps.parentTaskCreated,
-        recordTransition: deps.recordTransition,
-        runTaskMutation: deps.runTaskMutation,
-        makeDownloader: (tmpDir: string) =>
-          new SegmentDownloader({ aria2: deps.segmentAria2, tmpDir }),
-        decryptor: new SegmentDecryptor(),
-        assemble: assembleSegments,
-        makeFfmpeg: () => new FfmpegService(),
-        mkdtemp: async () => {
-          // mkdtemp requires its PARENT to exist. tmpRoot (app temp/motrix-media)
-          // is not created anywhere else, so ensure it first — otherwise the
-          // first mux/hls/dash task fails with ENOENT on mkdtemp.
-          await fs.promises.mkdir(tmpRoot, { recursive: true })
-          const base = path.join(tmpRoot, 'motrix-media-')
-          return fs.promises.mkdtemp(base)
-        },
-      })
-      this.coordinator = coordinator
-      const resolvedFetchManifest = deps.fetchManifest ?? fetchManifest
-      this.hlsDash = new HlsDashPipeline({
-        fetchManifest: resolvedFetchManifest,
-        coordinator,
-        assertFfmpegAvailable,
-      })
-      this.mux = new MuxPipeline({ coordinator, assertFfmpegAvailable })
-    }
-  }
-
-  /**
-   * Read-only access to the shared MuxPipeline. Used by the desktop
-   * Add-Task path (main/index.ts createDeps) to reuse the same
-   * coordinator/mux-pipeline instance — avoids the SP-1 phantom-task
-   * bug that would arise from constructing a second coordinator.
-   * Undefined only when this shell provides no media runtime. Availability
-   * is checked from the live resolver on every dispatch.
-   */
-  get muxPipeline(): MuxPipeline | undefined {
-    return this.mux
-  }
-
-  /**
-   * Active aria2 segment gids for a coordinator-managed media task (kind
-   * Mux/Hls). These ARE real aria2 gids — unlike the task's empty engineTaskId
-   * — so pause/resume can act on them. Returns [] when the task is unknown, is
-   * past the download phase, or this shell has no media runtime.
-   */
-  getMediaSegmentGids(taskId: string): string[] {
-    return this.coordinator?.getActiveSegmentGids(taskId) ?? []
   }
 
   /** SubmitDownloadHandler: the bridge dispatcher injects this. */
@@ -380,9 +220,7 @@ export class BridgeReceiver {
           : []
       const serialized = serializeCookieHeader(rawCookies)
       const cookieHeader = serialized || undefined
-      let m: Awaited<
-        ReturnType<NonNullable<BridgeReceiverDeps['resolveToMux']>>
-      >
+      let m: Awaited<ReturnType<ResolveToMux>>
       try {
         m = await this.deps.resolveToMux(adapted.primaryUrl, cookieHeader)
       } catch (error) {
@@ -392,7 +230,9 @@ export class BridgeReceiver {
             'Media page could not be resolved',
             {
               appCode: 'media-resolve-failed',
-              retryable: error.failure === 'command-failed',
+              retryable:
+                error.failure === 'command-failed' ||
+                error.failure === 'timeout',
               context: { pluginId: error.pluginId, failure: error.failure },
             }
           )
@@ -405,7 +245,8 @@ export class BridgeReceiver {
         // name pick or pipeline work.
         const videoUrl = admitHttpSource(m.videoUrl)
         const audioUrl = admitHttpSource(m.audioUrl)
-        if (!this.mux) {
+        const media = this.deps.media
+        if (!media) {
           throw new BridgeReceiverError(
             'unsupported-kind',
             'ffmpeg unavailable — mux pipeline not active'
@@ -437,7 +278,7 @@ export class BridgeReceiver {
             ? { durationSec: adapted.sourceMeta.durationSec }
             : {}),
         }
-        return this.mux.dispatch(muxAdapted)
+        return media.mux.dispatch(muxAdapted)
       }
     }
 
@@ -445,22 +286,22 @@ export class BridgeReceiver {
       return this.magnet.dispatch(adapted)
     }
     if (adapted.kind === 'hls' || adapted.kind === 'dash') {
-      if (!this.hlsDash) {
+      if (!this.deps.media) {
         throw new BridgeReceiverError(
           'unsupported-kind',
           'ffmpeg unavailable — hls/dash pipeline not active'
         )
       }
-      return this.hlsDash.dispatch(adapted)
+      return this.deps.media.hlsDash.dispatch(adapted)
     }
     if (adapted.kind === 'mux') {
-      if (!this.mux) {
+      if (!this.deps.media) {
         throw new BridgeReceiverError(
           'unsupported-kind',
           'ffmpeg unavailable — mux pipeline not active'
         )
       }
-      return this.mux.dispatch(adapted)
+      return this.deps.media.mux.dispatch(adapted)
     }
     return this.direct.dispatch(adapted)
   }
@@ -505,36 +346,23 @@ export class BridgeReceiver {
   }
 
   /**
-   * Stop publishing and cancel/drain every coordinator-owned media run.
-   * Direct/aria2 downloads remain owned by the engine lifecycle; only the
-   * long-lived HLS/DASH/mux processes created by this receiver are joined here.
+   * Stop publishing. Media runs belong to the process-scoped runtime and are
+   * drained by the shell, not by a bridge stop; direct/aria2 downloads remain
+   * owned by the engine lifecycle.
    */
   async stopAndDrain(): Promise<void> {
     this.stop()
-    await this.coordinator?.stopAndDrain()
   }
 
   /** Extension-initiated cancel. `taskId` is the MDXP public id
    *  (== DownloadTask.id), not an aria2 gid. The receiver does not know
    *  which subsystem owns the task, so both the direct pipeline and the
-   *  media coordinator are tried defensively; not-found is silently swallowed. */
+   *  media runtime are tried defensively; not-found is silently swallowed. */
   async cancel(taskId: string): Promise<void> {
     await Promise.allSettled([
       this.direct.cancel(taskId),
-      this.coordinator?.cancel(taskId),
+      this.deps.media?.cancel(taskId),
     ])
-  }
-
-  /**
-   * Tear down ONLY a coordinator-managed media task's in-flight run (segment
-   * downloaders + ffmpeg + temp dir). No-op once the run has finished. Unlike
-   * cancel(), this deliberately does NOT touch the DirectPipeline:
-   * DirectPipeline.cancel routes back into removeTask, and this method is
-   * invoked FROM removeTask's media-teardown branch — going through cancel()
-   * would recurse (removeTask → cancelMedia → direct.cancel → removeTask → …).
-   */
-  async cancelMedia(taskId: string): Promise<void> {
-    await this.coordinator?.cancel(taskId)
   }
 
   /**

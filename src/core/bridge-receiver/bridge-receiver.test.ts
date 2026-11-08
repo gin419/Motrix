@@ -2,6 +2,11 @@ import { NOOP_TASK_ACTIVITY_RECORDER } from '@core/activity'
 import { principalKey } from '@core/bridge/credential-store'
 import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
 import type { SegmentAria2 } from '@core/download/segment-downloader'
+import {
+  createMediaRuntime,
+  type MediaRuntime,
+  type MediaRuntimeDeps,
+} from '@core/media-resolve/media-runtime'
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
 import { DownloadSourceError } from '@core/task/source-admission'
@@ -25,11 +30,30 @@ const fakeSegmentAria2: SegmentAria2 = {
   onError: vi.fn(),
 }
 
+type MediaFakeOptions = {
+  /** Non-null (or a live resolver) builds a real process-scoped runtime. */
+  ffmpegBinaryPath?: string | null
+  resolveFfmpegBinaryPath?: () => Promise<string | null>
+  fetchManifest?: MediaRuntimeDeps['fetchManifest']
+  segmentAria2?: SegmentAria2
+  taskManager?: TaskManager
+  persistTask?: MediaRuntimeDeps['persistTask']
+}
+
 function fakeDeps(
-  over: Partial<ConstructorParameters<typeof BridgeReceiver>[0]> = {}
+  over: Partial<ConstructorParameters<typeof BridgeReceiver>[0]> &
+    MediaFakeOptions = {}
 ) {
-  return {
-    mediaMetaStore: makeMediaMetaStoreStub(),
+  const {
+    ffmpegBinaryPath = null,
+    resolveFfmpegBinaryPath,
+    fetchManifest,
+    segmentAria2 = fakeSegmentAria2,
+    taskManager = new TaskManager(),
+    persistTask = vi.fn(async () => {}),
+    ...rest
+  } = over
+  const base = {
     getDefaultSaveDir: () => '/tmp/save',
     pickName: async (_d: string, n: string) => n,
     createTask: vi.fn(async () => ({ gid: 'gid-1', taskId: 'task-abc' })),
@@ -47,16 +71,50 @@ function fakeDeps(
       emitTaskError: vi.fn(),
     },
     localize: (c: string) => c,
-    // New media-stack deps. Default: null (ffmpeg unavailable) so existing
-    // tests don't construct the media stack and tests that need it can override.
-    ffmpegBinaryPath: null as string | null,
-    taskManager: new TaskManager(),
-    activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
-    segmentAria2: fakeSegmentAria2,
-    tmpRoot: '/tmp/motrix-test',
-    persistTask: vi.fn(async () => {}),
-    ...over,
+    ...rest,
   }
+  // Default: no media runtime (as in a shell without FFmpeg support), so
+  // tests that need one opt in through ffmpegBinaryPath/resolver.
+  const media =
+    rest.media ??
+    (resolveFfmpegBinaryPath || ffmpegBinaryPath !== null
+      ? createMediaRuntime({
+          mediaMetaStore: makeMediaMetaStoreStub(),
+          taskManager,
+          activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
+          eventBus: base.eventBus as MediaRuntimeDeps['eventBus'],
+          publishTaskUpdate: vi.fn(),
+          publishTaskUpdateNow: vi.fn(),
+          resolveFfmpegBinaryPath:
+            resolveFfmpegBinaryPath ?? (async () => ffmpegBinaryPath),
+          pickName: base.pickName,
+          persistTask,
+          segmentAria2,
+          tmpRoot: '/tmp/motrix-test',
+          fetchManifest,
+        })
+      : undefined)
+  return { ...base, media, fetchManifest }
+}
+
+function fakeMediaRuntime() {
+  return {
+    mux: { dispatch: vi.fn() },
+    hlsDash: { dispatch: vi.fn() },
+    isFfmpegAvailable: vi.fn(async () => true),
+    getActiveSegmentGids: vi.fn(() => []),
+    cancel: vi.fn(async () => {}),
+    stopAndDrain: vi.fn(async () => {}),
+  } as unknown as MediaRuntime & {
+    mux: { dispatch: ReturnType<typeof vi.fn> }
+    cancel: ReturnType<typeof vi.fn>
+    stopAndDrain: ReturnType<typeof vi.fn>
+  }
+}
+
+function mediaOf(deps: { media?: MediaRuntime }): MediaRuntime {
+  if (!deps.media) throw new Error('test needs a media runtime')
+  return deps.media
 }
 
 describe('BridgeReceiver', () => {
@@ -89,27 +147,58 @@ describe('BridgeReceiver', () => {
     expect(deps.createTask).toHaveBeenCalledTimes(1)
   })
 
-  it('cancelMedia tears down the coordinator only and never re-enters removeTask', async () => {
-    // Regression: removeTask's media branch calls cancelMedia; if cancelMedia
-    // routed through cancel() -> DirectPipeline.cancel -> removeTask, removing a
-    // media task would recurse infinitely (stack overflow). cancelMedia must
-    // touch ONLY the coordinator.
+  it('cancel tries both the direct pipeline and the media runtime', async () => {
     const removeTask = vi.fn(async () => {})
-    const deps = fakeDeps({
-      removeTask,
-      ffmpegBinaryPath: '/usr/bin/ffmpeg', // construct the media coordinator
-    })
-    const r = new BridgeReceiver(deps as never)
+    const media = fakeMediaRuntime()
+    const r = new BridgeReceiver(fakeDeps({ removeTask, media }) as never)
 
-    // Baseline: the submit-cancel path (cancel) DOES route through
-    // DirectPipeline.cancel -> removeTask.
-    await r.cancel('some-direct-task')
+    await r.cancel('some-task')
     expect(removeTask).toHaveBeenCalled()
+    expect(media.cancel).toHaveBeenCalledWith('some-task')
+  })
 
-    // The remove-teardown path (cancelMedia) must NOT — else the loop above.
-    removeTask.mockClear()
-    await r.cancelMedia('some-media-task')
-    expect(removeTask).not.toHaveBeenCalled()
+  it('a bridge stop leaves process-scoped media runs alone, and a restarted receiver reuses the same runtime', async () => {
+    const media = fakeMediaRuntime()
+    vi.mocked(media.mux.dispatch).mockResolvedValue({ taskId: 'media-1' })
+    const first = new BridgeReceiver(fakeDeps({ media }) as never)
+    first.start()
+    await first.stopAndDrain()
+    expect(media.stopAndDrain).not.toHaveBeenCalled()
+    expect(media.cancel).not.toHaveBeenCalled()
+
+    const second = new BridgeReceiver(fakeDeps({ media }) as never)
+    await expect(
+      second.handle(
+        {
+          source: { pageUrl: 'https://x.test', pageTitle: 'X', detectedAt: 1 },
+          selection: {
+            kind: 'mux',
+            video: {
+              url: 'https://cdn.x.test/v.mp4',
+              headers: {},
+              cookies: [],
+              refererPolicy: 'strict-origin-when-cross-origin',
+            },
+            audio: {
+              url: 'https://cdn.x.test/a.mp4',
+              headers: {},
+              cookies: [],
+              refererPolicy: 'strict-origin-when-cross-origin',
+            },
+            container: 'mp4',
+          },
+          meta: { suggestedFilename: 'out.mp4', qualityLabel: '1080p' },
+        },
+        {
+          identity: {
+            kind: 'extension',
+            browser: 'chromium',
+            extensionId: 'e',
+          },
+        } as never
+      )
+    ).resolves.toEqual({ taskId: 'media-1' })
+    expect(media.mux.dispatch).toHaveBeenCalledOnce()
   })
 
   it('handle: rejects a non-extension (cli) session identity', async () => {
@@ -332,7 +421,7 @@ describe('BridgeReceiver', () => {
         try {
           const attempt = () => {
             if (kind === 'desktop-mux')
-              return receiver.muxPipeline!.dispatch({
+              return mediaOf(deps).mux.dispatch({
                 kind: 'mux',
                 taskId: 'desktop',
                 saveDir: '/tmp/save',
@@ -360,7 +449,7 @@ describe('BridgeReceiver', () => {
                     }
             return receiver.handle(params as never, extCtx)
           }
-          expect(receiver.muxPipeline).toBeDefined()
+          expect(deps.media).toBeDefined()
           await expect(attempt()).rejects.toMatchObject({
             code: 'unsupported-kind',
           })
@@ -449,13 +538,7 @@ describe('BridgeReceiver', () => {
 
       // Spy on internal hlsDash.dispatch to short-circuit actual segment work.
       // This verifies the routing wires up correctly without running aria2/ffmpeg.
-      const hlsDash = (
-        r as unknown as {
-          hlsDash: {
-            dispatch: (...a: unknown[]) => Promise<{ taskId: string }>
-          }
-        }
-      ).hlsDash
+      const hlsDash = mediaOf(deps).hlsDash
       expect(hlsDash).toBeDefined()
       const dispatchSpy = vi
         .spyOn(hlsDash, 'dispatch')
@@ -475,11 +558,7 @@ describe('BridgeReceiver', () => {
       })
       const r = new BridgeReceiver(deps as never)
 
-      const mux = (
-        r as unknown as {
-          mux: { dispatch: (...a: unknown[]) => Promise<{ taskId: string }> }
-        }
-      ).mux
+      const mux = mediaOf(deps).mux
       expect(mux).toBeDefined()
       const dispatchSpy = vi
         .spyOn(mux, 'dispatch')
@@ -541,11 +620,7 @@ describe('BridgeReceiver', () => {
       const r = new BridgeReceiver(deps as never)
 
       // Spy on mux.dispatch to verify routing without running the real pipeline
-      const mux = (
-        r as unknown as {
-          mux: { dispatch: (...a: unknown[]) => Promise<{ taskId: string }> }
-        }
-      ).mux
+      const mux = mediaOf(deps).mux
       expect(mux).toBeDefined()
       const muxDispatchSpy = vi
         .spyOn(mux, 'dispatch')
@@ -600,11 +675,7 @@ describe('BridgeReceiver', () => {
         },
       })
       const r = new BridgeReceiver(deps as never)
-      const mux = (
-        r as unknown as {
-          mux: { dispatch: (...a: unknown[]) => Promise<{ taskId: string }> }
-        }
-      ).mux
+      const mux = mediaOf(deps).mux
       const muxDispatchSpy = vi
         .spyOn(mux, 'dispatch')
         .mockResolvedValue({ taskId: 't' })
@@ -677,6 +748,22 @@ describe('BridgeReceiver', () => {
       expect(deps.createTask).not.toHaveBeenCalled()
     })
 
+    it('keeps a resolver timeout retryable, as it was before timeouts had their own failure', async () => {
+      const resolveToMux = vi.fn(async () => {
+        throw new MediaResolveError('example.media-resolver', 'timeout')
+      })
+      const deps = fakeDeps({ resolveToMux })
+      const r = new BridgeReceiver(deps as never)
+
+      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
+        data: {
+          appCode: 'media-resolve-failed',
+          retryable: true,
+          context: { failure: 'timeout' },
+        },
+      })
+    })
+
     it.each([
       ['a non-http scheme', 'ftp://cdn.example/video.m4s'],
       ['embedded credentials', 'https://user:secret@cdn.example/video.m4s'],
@@ -696,11 +783,7 @@ describe('BridgeReceiver', () => {
           resolveToMux,
         })
         const r = new BridgeReceiver(deps as never)
-        const mux = (
-          r as unknown as {
-            mux: { dispatch: (...a: unknown[]) => Promise<{ taskId: string }> }
-          }
-        ).mux
+        const mux = mediaOf(deps).mux
         const muxDispatchSpy = vi.spyOn(mux, 'dispatch')
 
         await expect(r.handle(directParams, extCtx)).rejects.toBeInstanceOf(

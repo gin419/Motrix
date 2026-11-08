@@ -381,46 +381,68 @@ describe('MainProcessWorkCoordinator', () => {
       'utf8'
     )
     const cleanup = source.indexOf('function performCleanup()')
+    const bridge = source.indexOf(
+      "const bridgeAndMediaDrain = safely('bridge'",
+      cleanup
+    )
     const cancellation = source.indexOf(
       'const cancellationDrain = Promise.all([',
       cleanup
     )
-    const bridge = source.indexOf("safely('bridge'", cancellation)
+    const joined = source.indexOf('bridgeAndMediaDrain,', cancellation)
     const engine = source.indexOf("safely('engine'", cancellation)
     const shellDrain = source.indexOf(
       "await safely('main-process-work'",
       cleanup
     )
 
-    expect(cancellation).toBeGreaterThan(cleanup)
-    expect(bridge).toBeGreaterThan(cancellation)
-    expect(engine).toBeGreaterThan(bridge)
-    expect(shellDrain).toBeGreaterThan(bridge)
+    expect(bridge).toBeGreaterThan(cleanup)
+    expect(cancellation).toBeGreaterThan(bridge)
+    expect(joined).toBeGreaterThan(cancellation)
     expect(shellDrain).toBeGreaterThan(engine)
+    expect(engine).toBeGreaterThan(joined)
   })
 
-  it('drains tracker resume compensation before Session and engine teardown', () => {
+  // The runtime order is covered by quit/session-engine-teardown.test.ts; this
+  // pins that cleanup hands it the tracker and bridge→media drains.
+  it('drains tracker compensation and media before Session and engine teardown', () => {
     const source = readFileSync(
       path.resolve(process.cwd(), 'src/main/index.ts'),
       'utf8'
     )
     const cleanup = source.indexOf('function performCleanup()')
-    const trackerDrain = source.indexOf(
-      "await safely('tracker', () => trackerManager?.stopAndDrain())",
-      cleanup
+    const teardown = source.indexOf('await stopSessionAndEngineLast({', cleanup)
+    const dependents = source.indexOf('dependents: [', teardown)
+    const tracker = source.indexOf(
+      "() => safely('tracker', () => trackerManager?.stopAndDrain())",
+      dependents
     )
-    const sessionDrain = source.indexOf(
+    const media = source.indexOf('() => bridgeAndMediaDrain,', dependents)
+    const dependentsEnd = source.indexOf('],', dependents)
+    const session = source.indexOf(
       "safely('session', () => sessionManager?.stopAndDrain())",
-      trackerDrain
+      dependentsEnd
     )
-    const engineStop = source.indexOf(
-      "safely('engine', () => supervisor?.stop())",
-      trackerDrain
+    const engine = source.indexOf(
+      "stopEngine: () => safely('engine', () => supervisor?.stop())",
+      dependentsEnd
     )
+    const teardownEnd = source.indexOf('})', engine)
 
-    expect(trackerDrain).toBeGreaterThan(cleanup)
-    expect(sessionDrain).toBeGreaterThan(trackerDrain)
-    expect(engineStop).toBeGreaterThan(trackerDrain)
+    expect(teardown).toBeGreaterThan(cleanup)
+    expect(tracker).toBeGreaterThan(dependents)
+    expect(media).toBeGreaterThan(tracker)
+    expect(dependentsEnd).toBeGreaterThan(media)
+    expect(session).toBeGreaterThan(dependentsEnd)
+    expect(engine).toBeGreaterThan(dependentsEnd)
+    expect(teardownEnd).toBeGreaterThan(engine)
+    // No other Session or engine stop runs outside the ordered teardown.
+    expect(source.indexOf("safely('session'", cleanup)).toBe(
+      source.lastIndexOf("safely('session'")
+    )
+    expect(source.indexOf("safely('engine'", cleanup)).toBe(
+      source.lastIndexOf("safely('engine'")
+    )
   })
 
   it('shares live ffmpeg detection and command schemas across the Electron plugin runtime', () => {

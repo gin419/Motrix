@@ -264,6 +264,13 @@ export class PluginHost {
    * over the bridge. Any error thrown by the worker handler surfaces
    * as a rejection that `CrossPluginInvoker` then wraps as
    * `plugin.command.handler_threw` (callee stack never reaches caller).
+   *
+   * `timeoutMs` overrides the bridge's 10 s default for plain command calls.
+   * `signal` cancels the call: a still-queued lane entry fails with
+   * `plugin.runtime.entry_aborted`; a running one rejects with
+   * `plugin.command.cancelled` and its scoped plugin HTTP calls are aborted.
+   * Neither applies to `operation` calls, which carry their own deadline and
+   * signal in the operation context.
    */
   invokeCommand(
     pluginId: string,
@@ -272,6 +279,8 @@ export class PluginHost {
     options: {
       callChain?: PluginCallChain
       operation?: OperationExecution
+      timeoutMs?: number
+      signal?: AbortSignal
     } = {}
   ): Promise<unknown> {
     return this.laneFor(pluginId).run(
@@ -298,12 +307,21 @@ export class PluginHost {
         }
 
         return raceWithAdmissionAbort(
-          a.bridge.callPlugin(commandId, args),
+          a.bridge.callPlugin(
+            commandId,
+            args,
+            options.timeoutMs,
+            undefined,
+            options.signal ? { signal: options.signal } : {}
+          ),
           a.admissionAbort.signal,
           pluginId
         )
       },
-      { callChain: options.callChain }
+      {
+        callChain: options.callChain,
+        ...(options.signal ? { signal: options.signal } : {}),
+      }
     )
   }
 

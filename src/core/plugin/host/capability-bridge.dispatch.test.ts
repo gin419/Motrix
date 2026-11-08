@@ -458,6 +458,76 @@ describe('CapabilityBridge dispatch table', () => {
     await expect(pending).rejects.toThrow('timed out')
   })
 
+  it('aborting a command call rejects it and aborts its scoped plugin HTTP calls', async () => {
+    const settleOther: Array<() => void> = []
+    const getStub = vi.fn(
+      (_url: string, opts: { signal: AbortSignal }) =>
+        new Promise((resolve, reject) => {
+          settleOther.push(() =>
+            resolve({ status: 200, statusText: '', headers: {}, body: '' })
+          )
+          opts.signal.addEventListener('abort', () =>
+            reject(new Error('aborted'))
+          )
+        })
+    )
+    ;(bridge as unknown as { pluginHttpHost: unknown }).pluginHttpHost = {
+      get: getStub,
+      post: vi.fn(),
+      request: vi.fn(),
+    }
+    const controller = new AbortController()
+    const pending = bridge.callPlugin(
+      `${PLUGIN_ID}.entry`,
+      {},
+      60_000,
+      undefined,
+      { signal: controller.signal }
+    )
+    const event = lastPosted(posted) as {
+      commandScope: {
+        commandInvocationId: number
+        callChain: { id: string; plugins: string[] }
+      }
+    }
+    // An HTTP call outside this command scope must survive the abort.
+    const unscoped = bridge.dispatchCall({
+      ...makeCall('http', 'get', ['https://example.com/other']),
+      id: 90,
+    })
+    const scoped = bridge.dispatchCall({
+      ...makeCall('http', 'get', ['https://example.com/scoped']),
+      id: 91,
+      commandScope: event.commandScope,
+    })
+    await vi.waitFor(() => expect(getStub).toHaveBeenCalledTimes(2))
+    const [unscopedSignal, scopedSignal] = getStub.mock.calls.map(
+      (call) => call[1].signal
+    )
+
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({
+      code: 'plugin.command.cancelled',
+    })
+    await scoped
+    expect(scopedSignal?.aborted).toBe(true)
+    expect(unscopedSignal?.aborted).toBe(false)
+    settleOther[0]?.()
+    await unscoped
+  })
+
+  it('rejects at once when the signal is already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      bridge.callPlugin(`${PLUGIN_ID}.entry`, {}, 60_000, undefined, {
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ code: 'plugin.command.cancelled' })
+    expect(posted).toEqual([])
+  })
+
   it('rejects a command scope that does not match a pending lane entry', async () => {
     await bridge.dispatchCall({
       type: 'call',

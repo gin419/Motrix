@@ -11,6 +11,9 @@ import type { EventBus } from '@core/events/event-bus'
 import type { GeoIPManager } from '@core/geoip/geo-ip-manager'
 import { createUpdateGeoIPDatabaseHandler } from '@core/geoip/update-geo-ip-database'
 import { getLogger } from '@core/logger'
+import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import type { MediaRuntime } from '@core/media-resolve/media-runtime'
+import { makeResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { publishEngineRestartRequired } from '@core/notifications/engine-restart-required'
 import type { NotificationCenter } from '@core/notifications/notification-center'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
@@ -259,6 +262,10 @@ export interface CommandContext {
   hookAuditLog?: HookAuditLog
   hookOrchestrator?: HookOrchestrator
   bridgeManager: BridgeManager
+  /** Process-scoped HLS/DASH/mux runtime, shared with the bridge receiver. */
+  media: MediaRuntime
+  /** Process-scoped site resolution, shared with the bridge receiver. */
+  mediaResolve: MediaResolveService
   magnetTracker: MagnetTracker
   activityRecorder: TaskActivityRecorder
   persistTask: NonNullable<TaskActionDeps['persistTask']>
@@ -355,6 +362,8 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     hookAuditLog,
     hookOrchestrator,
     bridgeManager,
+    media,
+    mediaResolve,
     activityRecorder,
     persistTask,
     persistTaskWithPluginMetadata,
@@ -368,6 +377,7 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     publishTaskUpdateNow,
   } = ctx
 
+  const resolveToMux = makeResolveToMux(mediaResolve)
   const createDeps: CreateTaskDeps = {
     adapter,
     directResourceValidator: new DirectResourceValidatorService(),
@@ -401,28 +411,20 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
       await waitForTasksReady?.()
     },
     assertEngineReady: () => supervisor.assertReady(),
-    // Lazy closures over bridgeManager.current so command-registration order
-    // vs bridge bootstrap order never matters. When the bridge is disabled or
-    // not yet started, resolveToMux returns null → HTTP fallback; dispatchMux
-    // is only called when resolveToMux returns non-null (seam gates on both).
-    // A matching resolver that fails throws MediaResolveError instead, which
-    // surfaces as a task-creation error rather than downloading the page.
-    // By design the desktop path passes NO cookie header (2nd arg omitted):
-    // the app has no browser bilibili session, so desktop paste stays ≤480p.
-    // Bilibili HD comes via the extension submit path, which carries cookies.
+    // Desktop paste resolution still runs only while the bridge is running:
+    // with the bridge disabled or not yet started, resolveToMux returns null
+    // → HTTP fallback, as before. dispatchMux is only called when
+    // resolveToMux returns non-null (the seam gates on both). A matching
+    // resolver that fails throws MediaResolveError instead, which surfaces as
+    // a task-creation error rather than downloading the page. The desktop
+    // path passes no cookie header (2nd arg omitted); only the extension
+    // submit path carries browser cookies.
     resolveToMux: (url: string) =>
-      bridgeManager.current?.resolveToMux(url) ?? Promise.resolve(null),
-    // Share the receiver's live FFmpeg check with desktop submissions.
+      bridgeManager.current ? resolveToMux(url) : Promise.resolve(null),
+    // Same process-scoped pipeline and live FFmpeg check as the receiver.
     dispatchMux: async (adapted: AdaptedMux) => {
-      const mux = bridgeManager.current?.muxPipeline
-      if (!mux) {
-        throw new AppError(
-          ErrorCode.EngineFeatureUnavailable,
-          i18n.t('settings.integration.media.pipelineUnavailable')
-        )
-      }
       try {
-        return await mux.dispatch(adapted)
+        return await media.mux.dispatch(adapted)
       } catch (error) {
         if (
           error instanceof BridgeReceiverError &&
@@ -438,13 +440,12 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     },
   }
 
-  // Lazy closure over bridgeManager.current, mirroring resolveToMux/dispatchMux:
-  // a media task (Mux/Hls) has engineTaskId '' and no aria2 handle, so pause/
-  // resume act on the coordinator's live segment gids instead. Returns [] when
-  // the bridge/coordinator is absent — pause/resume then reports a clear
+  // A media task (Mux/Hls) has engineTaskId '' and no aria2 handle, so pause/
+  // resume act on the coordinator's live segment gids instead. Returns [] for
+  // a task with no live download phase — pause/resume then reports a clear
   // "can't be paused" error rather than crashing on an empty gid.
   const getMediaSegmentGids = (taskId: string): string[] =>
-    bridgeManager.current?.getMediaSegmentGids(taskId) ?? []
+    media.getActiveSegmentGids(taskId)
 
   const log = getLogger('commands')
 
@@ -554,8 +555,7 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     publishTaskUpdateNow,
     // Tear down the coordinator run for a media task (engineTaskId '') so
     // removing it never orphans the segment downloaders + ffmpeg.
-    cancelMedia: (id: string) =>
-      bridgeManager.current?.cancelMedia(id) ?? Promise.resolve(),
+    cancelMedia: (id: string) => media.cancel(id),
     deleteParentTasks,
     runTaskMutation,
   }

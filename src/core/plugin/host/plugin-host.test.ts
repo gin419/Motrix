@@ -847,6 +847,110 @@ parentPort.on('message', (msg) => {
     await host.shutdown()
   })
 
+  describe('invokeCommand timeout and abort signal', () => {
+    const makeHost = () =>
+      new PluginHost({
+        registry,
+        stateStore,
+        capabilityHost: capHost,
+        workerScriptPath: workerPath,
+        appVersion: '2.5.0',
+        runtime: 'server',
+        hostLanguage: 'en-US',
+      })
+
+    it('keeps the bridge default timeout when no timeoutMs is given', async () => {
+      const host = makeHost()
+      await host.activate('alice.demo')
+      const bridge = host.bridgeFor('alice.demo')
+      if (!bridge) throw new Error('bridge missing')
+      const callPlugin = vi.spyOn(bridge, 'callPlugin')
+      void host
+        .invokeCommand('alice.demo', 'alice.demo.run', {})
+        .catch(() => {})
+      await vi.waitFor(() => expect(callPlugin).toHaveBeenCalledOnce())
+      expect(callPlugin.mock.calls[0]?.[2]).toBeUndefined()
+      expect(callPlugin.mock.calls[0]?.[4]).toEqual({})
+      await host.shutdown()
+    })
+
+    it('honors timeoutMs and frees the lane', async () => {
+      const host = makeHost()
+      await host.activate('alice.demo')
+      await expect(
+        host.invokeCommand(
+          'alice.demo',
+          'alice.demo.run',
+          {},
+          { timeoutMs: 20 }
+        )
+      ).rejects.toMatchObject({
+        code: 'plugin.command.timeout',
+        message: expect.stringContaining('timed out after 20ms'),
+      })
+      expect(host.laneState('alice.demo')).toMatchObject({
+        queued: 0,
+        running: 0,
+      })
+      await host.shutdown()
+    })
+
+    it('rejects a running call with plugin.command.cancelled on abort', async () => {
+      const host = makeHost()
+      await host.activate('alice.demo')
+      const controller = new AbortController()
+      const pending = host.invokeCommand(
+        'alice.demo',
+        'alice.demo.run',
+        {},
+        { signal: controller.signal, timeoutMs: 60_000 }
+      )
+      await vi.waitFor(() =>
+        expect(host.laneState('alice.demo').running).toBe(1)
+      )
+      controller.abort()
+      await expect(pending).rejects.toMatchObject({
+        code: 'plugin.command.cancelled',
+      })
+      await vi.waitFor(() =>
+        expect(host.laneState('alice.demo').running).toBe(0)
+      )
+      await host.shutdown()
+    })
+
+    it('fails a queued lane entry with entry_aborted once its turn comes', async () => {
+      const host = makeHost()
+      await host.activate('alice.demo')
+      const bridge = host.bridgeFor('alice.demo')
+      if (!bridge) throw new Error('bridge missing')
+      const callPlugin = vi.spyOn(bridge, 'callPlugin')
+      const first = host.invokeCommand(
+        'alice.demo',
+        'alice.demo.run',
+        {},
+        { timeoutMs: 40 }
+      )
+      const controller = new AbortController()
+      const queued = host.invokeCommand(
+        'alice.demo',
+        'alice.demo.run',
+        {},
+        { signal: controller.signal, timeoutMs: 60_000 }
+      )
+      expect(host.laneState('alice.demo').queued).toBeGreaterThanOrEqual(1)
+      controller.abort()
+      await expect(first).rejects.toMatchObject({
+        code: 'plugin.command.timeout',
+      })
+      await expect(queued).rejects.toMatchObject({
+        message: 'plugin.runtime.entry_aborted',
+      })
+      // Only the first entry ever reached the bridge.
+      expect(callPlugin).toHaveBeenCalledOnce()
+      await host.shutdown()
+    })
+  })
+
   // -------------------------------------------------------------------------
   // M5 — idle disposal (spec §7 L2149)
   // -------------------------------------------------------------------------

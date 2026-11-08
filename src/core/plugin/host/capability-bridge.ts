@@ -182,6 +182,26 @@ class PluginCodedError extends Error {
   }
 }
 
+/** `code` of the error a host-initiated command call rejects with on timeout. */
+export const COMMAND_TIMEOUT_CODE = 'plugin.command.timeout'
+/** `code` of the error a host-initiated command call rejects with on abort. */
+export const COMMAND_CANCELLED_CODE = 'plugin.command.cancelled'
+
+function commandCancelledError(commandId: string): PluginCodedError {
+  return new PluginCodedError(
+    COMMAND_CANCELLED_CODE,
+    `callPlugin('${commandId}') was cancelled`
+  )
+}
+
+/** True when `error` is a command call that hit its timeout. */
+export function isCommandTimeoutError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as { code?: unknown }).code === COMMAND_TIMEOUT_CODE
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Zod schemas for argument validation
 // ---------------------------------------------------------------------------
@@ -1887,12 +1907,17 @@ export class CapabilityBridge {
    * @param commandId   Fully-qualified command id (e.g. 'test.allcaps.echoAll').
    * @param args        Arguments passed to the command handler.
    * @param timeoutMs   Max wait time (default: 10s).
+   * @param options.signal  Aborting it settles the call like a timeout does:
+   *   the pending entry is dropped, plugin HTTP calls made inside this
+   *   command scope are aborted, and the promise rejects with
+   *   `plugin.command.cancelled`.
    */
   callPlugin(
     commandId: string,
     args: unknown,
     timeoutMs = 10_000,
-    callChain?: PluginCallChain
+    callChain?: PluginCallChain,
+    options: { signal?: AbortSignal } = {}
   ): Promise<unknown> {
     if (
       this.opts.manifest.contributes.commands?.some(
@@ -1907,6 +1932,8 @@ export class CapabilityBridge {
           'Operation requires host authorization'
         )
       )
+    const { signal } = options
+    if (signal?.aborted) return Promise.reject(commandCancelledError(commandId))
     const id = this.nextCommandCallId++
     const laneCallChain = callChain ?? currentPluginCallChain()
     const commandScope: CommandInvocationScopeV1 = {
@@ -1916,30 +1943,44 @@ export class CapabilityBridge {
         : { id: randomUUID(), plugins: [this.opts.pluginId] },
     }
     return new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (this.pendingCommandCalls.has(id)) {
-          this.pendingCommandCalls.delete(id)
-          this.abortHttpCalls(
-            (entry) =>
-              entry.commandScope !== null &&
-              sameCommandScope(entry.commandScope, commandScope)
-          )
-          reject(
-            new Error(
+      // Timeout and abort share one settle path: drop the pending entry so a
+      // late worker reply is ignored, and abort the plugin HTTP calls this
+      // command scope started so they cannot outlive the caller's interest.
+      const abandon = (error: Error) => {
+        if (!this.pendingCommandCalls.has(id)) return
+        this.pendingCommandCalls.delete(id)
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+        this.abortHttpCalls(
+          (entry) =>
+            entry.commandScope !== null &&
+            sameCommandScope(entry.commandScope, commandScope)
+        )
+        reject(error)
+      }
+      const onAbort = () => abandon(commandCancelledError(commandId))
+      const timer = setTimeout(
+        () =>
+          abandon(
+            new PluginCodedError(
+              COMMAND_TIMEOUT_CODE,
               `callPlugin('${commandId}') timed out after ${timeoutMs}ms`
             )
-          )
-        }
-      }, timeoutMs)
+          ),
+        timeoutMs
+      )
+      signal?.addEventListener('abort', onAbort, { once: true })
 
       this.pendingCommandCalls.set(id, {
         commandScope,
         resolve: (v) => {
           clearTimeout(timer)
+          signal?.removeEventListener('abort', onAbort)
           resolve(v)
         },
         reject: (e) => {
           clearTimeout(timer)
+          signal?.removeEventListener('abort', onAbort)
           reject(e)
         },
       })

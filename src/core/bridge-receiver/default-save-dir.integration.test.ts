@@ -12,6 +12,7 @@ import {
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { NOOP_TASK_ACTIVITY_RECORDER } from '@core/activity'
 import { AppliedDownloadProxyPolicy } from '@core/proxy/applied-download-proxy-policy'
 import { SettingsManager } from '@core/settings/settings-manager'
 import { finalizeTask } from '@core/task/actions/finalize-task'
@@ -21,6 +22,7 @@ import {
 } from '@core/task/create-task-handler'
 import { DirectResourceValidatorService } from '@core/task/direct-resource-validator'
 import { FinalNamePickerImpl } from '@core/task/final-name-picker'
+import { TaskManager } from '@core/task/task-manager'
 import { TorrentMetaStoreImpl } from '@core/task/torrent-meta-store'
 import {
   type Aria2Handle,
@@ -135,6 +137,7 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
               () => false
             ),
         })
+        const taskManager = new TaskManager()
         const deps = makeBridgeReceiverDeps({
           getDefaultSaveDir: () => dir,
           pickName: (saveDir, name) => picker.pick(saveDir, name),
@@ -145,8 +148,8 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
           settingsManager: settings,
           finalNamePicker: picker,
           torrentMetaStore,
-          taskManager: deps.taskManager,
-          activityRecorder: deps.activityRecorder,
+          taskManager: taskManager,
+          activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
           eventBus: { emit: () => {} },
           directResourceProxyPolicy: new AppliedDownloadProxyPolicy({
             noProxy: '',
@@ -166,7 +169,7 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
             : `${baseUrl}/filename-${origin}`
         params.meta.suggestedFilename = hint
         const { taskId } = await receiver.handle(params, makeExtensionContext())
-        const task = deps.taskManager.getById(taskId)
+        const task = taskManager.getById(taskId)
         if (!task) throw new Error('missing task')
         await vi.waitFor(
           async () => {
@@ -178,7 +181,7 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
         )
         expect(task.finalName).toBe(filename)
         await finalizeTask(taskId, {
-          taskManager: Object.assign(deps.taskManager, {
+          taskManager: Object.assign(taskManager, {
             persist: async () => {},
           }),
           adapter: wired.adapter,
@@ -190,7 +193,7 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
           torrentMetaStore,
           settings: { get: () => ({ bt: { seedTime: 0, seedRatio: 0 } }) },
           eventBus: { emit: () => {} },
-          activityRecorder: deps.activityRecorder,
+          activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
           publishTaskUpdate: () => {},
           publishTaskUpdateNow: () => {},
           log: { info: () => {}, warn: () => {}, error: () => {} },
@@ -231,6 +234,7 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
           }
         },
       })
+      const taskManager = new TaskManager()
       const deps = makeBridgeReceiverDeps({
         getDefaultSaveDir: () => settings.getApp().defaultSaveDir,
         pickName: (dir, name) => picker.pick(dir, name),
@@ -240,8 +244,8 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
         settingsManager: settings,
         finalNamePicker: picker,
         torrentMetaStore: new TorrentMetaStoreImpl(root),
-        taskManager: deps.taskManager,
-        activityRecorder: deps.activityRecorder,
+        taskManager: taskManager,
+        activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
         eventBus: { emit: () => {} },
         directResourceProxyPolicy: new AppliedDownloadProxyPolicy({
           noProxy: '',
@@ -272,7 +276,7 @@ describe.skipIf(!bundledAria2Exists() || !canBindLoopbackTcp())(
           },
           { timeout: 10_000, interval: 50 }
         )
-        const task = deps.taskManager.getById(taskId)
+        const task = taskManager.getById(taskId)
         if (!task) throw new Error('missing task')
         expect(task.saveDir).toBe(dir)
         expect(task.finalPath).toBe(path.join(dir, filename))
