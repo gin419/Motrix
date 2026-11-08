@@ -9,7 +9,12 @@ import type { GeoIPManager } from '@core/geoip/geo-ip-manager'
 import { createUpdateGeoIPDatabaseHandler } from '@core/geoip/update-geo-ip-database'
 import { getLogger } from '@core/logger'
 import type { MediaDispatchTarget } from '@core/media-resolve/dispatch-variant'
+import {
+  createMediaPicker,
+  type MediaPickerOwner,
+} from '@core/media-resolve/media-picker-handlers'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import { createMediaResolutionStore } from '@core/media-resolve/resolution-store'
 import { publishEngineRestartRequired } from '@core/notifications/engine-restart-required'
 import type { NotificationCenter } from '@core/notifications/notification-center'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
@@ -292,6 +297,15 @@ export function buildServerCommandHandlers(
     (async (_task: DownloadTask, persistParent: () => void | Promise<void>) => {
       await persistParent()
     })
+
+  // Resolutions the media picker previewed, bound to the operator session
+  // that asked for them, for this process's lifetime.
+  const mediaResolutions = createMediaResolutionStore()
+  const mediaPicker = createMediaPicker({
+    service: ctx.mediaResolve,
+    store: mediaResolutions,
+    isFfmpegAvailable: () => ctx.media.isFfmpegAvailable(),
+  })
 
   const createDeps: CreateTaskDeps = {
     adapter,
@@ -732,6 +746,13 @@ export function buildServerCommandHandlers(
         throw error
       }
     }),
+
+    [Commands.ResolveMedia]: async (owner: MediaPickerOwner, value: unknown) =>
+      mediaPicker.resolve(owner, value),
+    [Commands.CancelMediaResolve]: async (
+      owner: MediaPickerOwner,
+      value: unknown
+    ) => mediaPicker.cancel(owner, value),
 
     [Commands.PauseTask]: async (taskId: string) => {
       await pauseTask(taskId, pauseResumeDeps)

@@ -177,3 +177,12 @@ export function planMediaName(
   }
   return sanitizeRemoteFilename(withExtension)
 }
+
+/**
+ * The folder a multi-part pick is saved into: the collection title, under
+ * the same rule as a planned file name. Null without a usable title.
+ */
+export function planMediaFolderName(media: ResolvedMedia): string | null {
+  const name = sanitizeFilename(media.resolution.title).trim()
+  return name ? sanitizeRemoteFilename(name) : null
+}

@@ -40,6 +40,15 @@ export interface MediaResolveService {
   /** Registry-only match; starts no plugin VM. */
   match(urls: string[]): Array<{ pluginId: string; pluginName: string } | null>
   /**
+   * Registry only: `pluginId` when it is still an enabled resolver that
+   * claims `url` (it may have been disabled or removed since it answered),
+   * else null.
+   */
+  eligibleResolver(
+    url: string,
+    pluginId: string
+  ): { pluginId: string; pluginName: string } | null
+  /**
    * Run the matching resolvers in order until one answers. Faults (throw,
    * timeout, invalid result) are remembered and the next candidate is tried;
    * if no candidate answers, the first fault is thrown as MediaResolveError.
@@ -76,6 +85,15 @@ export function makeMediaResolveService(
           ? { pluginId: first.manifest.id, pluginName: first.manifest.name }
           : null
       })
+    },
+
+    eligibleResolver(url, pluginId) {
+      const entry = siteResolverCandidates(deps.registry, url).find(
+        (e) => e.manifest.id === pluginId
+      )
+      return entry
+        ? { pluginId: entry.manifest.id, pluginName: entry.manifest.name }
+        : null
     },
 
     async resolve(url, options = {}) {

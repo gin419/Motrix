@@ -5,6 +5,7 @@ import {
   mediaResolveMessage,
   parseMediaResolveMessage,
 } from '@shared/errors'
+import type { MediaResolveFailure } from '@shared/schemas/media-resolution'
 
 /**
  * - `command-failed`: activation or the resolve command threw.
@@ -25,14 +26,7 @@ import {
  * host has no text for carries the resolver's plain-text `detail` after
  * the generic key (see `mediaResolveMessage`).
  */
-export type MediaResolveFailure =
-  | 'command-failed'
-  | 'timeout'
-  | 'invalid-result'
-  | 'unavailable'
-  | 'no-playable-variant'
-  | 'ffmpeg-required'
-  | 'stream-unavailable'
+export type { MediaResolveFailure }
 
 /**
  * A site resolver claimed the URL (enabled, resolve-command marker present,

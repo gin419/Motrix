@@ -59,4 +59,47 @@ describe('operation RPC principal', () => {
       await app.close()
     }
   })
+
+  it.each([Commands.ResolveMedia, Commands.CancelMediaResolve])(
+    'passes the verified session principal to %s',
+    async (channel) => {
+      const calls: unknown[][] = []
+      const app = await createApp({
+        operatorAuth: { operatorToken: 'operation-test-token' },
+        commandHandlers: {
+          [channel]: async (...args: unknown[]) => {
+            calls.push(args)
+            return { status: 'declined' }
+          },
+        },
+      })
+      try {
+        const login = await app.inject({
+          method: 'POST',
+          url: '/rpc/auth/login',
+          payload: { token: 'operation-test-token' },
+        })
+        const cookie = login.headers['set-cookie']
+          ?.toString()
+          .split(';')[0] as string
+        const response = await app.inject({
+          method: 'POST',
+          url: `/rpc/command/${channel}`,
+          headers: { cookie },
+          payload: { args: [{ requestId: 'r' }, { id: 'forged-owner' }] },
+        })
+        expect(response.statusCode).toBe(200)
+        const [owner, payload, extra] = calls[0] as [
+          OperationPrincipal,
+          unknown,
+          unknown,
+        ]
+        expect(owner.id).toMatch(/^session:[a-f0-9]{64}$/)
+        expect(payload).toEqual({ requestId: 'r' })
+        expect(extra).toBeUndefined()
+      } finally {
+        await app.close()
+      }
+    }
+  )
 })

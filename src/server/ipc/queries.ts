@@ -8,6 +8,7 @@ import { getFfmpegInstallStatus } from '@core/ffmpeg/verified-install'
 import { pathExists } from '@core/fs/path-exists'
 import type { GeoIPManager } from '@core/geoip/geo-ip-manager'
 import { createGetGeoIPStatusHandler } from '@core/geoip/get-geo-ip-status'
+import { matchMediaResolvers } from '@core/media-resolve/media-picker-handlers'
 import type { NotificationCenter } from '@core/notifications/notification-center'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
 import { readCommandGraph } from '@core/plugin/commands/command-graph'
@@ -185,6 +186,8 @@ export function buildServerQueryHandlers(
       z.undefined().parse(payload)
       return getFfmpegInstallStatus(userDataDir)
     },
+    [Queries.MatchMediaResolvers]: async (payload: unknown) =>
+      matchMediaResolvers(pluginRegistry, payload),
     [Queries.ListServerDirectoryLocations]: async (request: unknown) => {
       if (
         !ListServerDirectoryLocationsRequestSchema.safeParse(request).success

@@ -1502,6 +1502,35 @@ describe('server paste media resolution', () => {
   })
 })
 
+describe('server media picker commands', () => {
+  it('previews a page for the operator session that asked', async () => {
+    const fixture = pastedMediaPage()
+    const handlers = buildServerCommandHandlers({
+      ...makeFakeCtx(),
+      mediaResolve: fixture.mediaResolve,
+      media: fixture.media,
+    } as unknown as ServerCommandContext)
+    const owner = (id: string) => ({ id, eligible: () => true })
+    const requestId = '00000000-0000-4000-8000-000000000001'
+
+    const result = await handlers[Commands.ResolveMedia]?.(owner('session:a'), {
+      requestId,
+      url: fixture.page,
+    })
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      preview: { title: 'Example clip', folderName: 'Example clip' },
+    })
+    expect(JSON.stringify(result)).not.toContain('cdn.example')
+    await expect(
+      handlers[Commands.CancelMediaResolve]?.(owner('session:b'), {
+        requestId,
+      })
+    ).resolves.toEqual({ cancelled: false })
+  })
+})
+
 describe('server plural task commands', () => {
   it.each(['singular', 'plural'] as const)(
     'controls media segments through %s Web commands',

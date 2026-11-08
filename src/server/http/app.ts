@@ -15,7 +15,7 @@ import type {
   Handler,
   QueryHandlerMap,
 } from '@shared/protocol/handler-types'
-import { OPERATION_CHANNELS } from '@shared/protocol/operation-channels'
+import { OWNER_SCOPED_CHANNELS } from '@shared/protocol/operation-channels'
 import { Queries } from '@shared/protocol/queries'
 import { DirectoryPreferencesResultSchema } from '@shared/schemas/directory-preferences'
 import { downloadsSettingsResultSchema } from '@shared/schemas/downloads-settings'
@@ -245,7 +245,7 @@ export async function createApp(
       return directoryRpc(channel, req.body, handler)
     }
     try {
-      if (OPERATION_CHANNELS.has(channel)) {
+      if (OWNER_SCOPED_CHANNELS.has(channel)) {
         const owner = operatorSessions?.principal(req)
         if (!owner) return reply.code(401).send({ error: 'unauthorized' })
         return sendRpcValue(reply, await handler(owner, req.body?.args?.[0]))

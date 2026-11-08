@@ -9,8 +9,10 @@ import type { EventBus } from '@core/events/event-bus'
 import type { GeoIPManager } from '@core/geoip/geo-ip-manager'
 import { createUpdateGeoIPDatabaseHandler } from '@core/geoip/update-geo-ip-database'
 import { getLogger } from '@core/logger'
+import { createMediaPicker } from '@core/media-resolve/media-picker-handlers'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
 import type { MediaRuntime } from '@core/media-resolve/media-runtime'
+import { createMediaResolutionStore } from '@core/media-resolve/resolution-store'
 import { publishEngineRestartRequired } from '@core/notifications/engine-restart-required'
 import type { NotificationCenter } from '@core/notifications/notification-center'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
@@ -110,7 +112,7 @@ import {
 } from '@shared/protocol/errors'
 import { Events } from '@shared/protocol/events'
 import type { CommandHandlerMap } from '@shared/protocol/handler-types'
-import { OPERATION_CHANNELS } from '@shared/protocol/operation-channels'
+import { OWNER_SCOPED_CHANNELS } from '@shared/protocol/operation-channels'
 import {
   type TaskCreateCommandResult,
   taskCreateRequestSchema,
@@ -416,6 +418,19 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     // Same process-scoped pipelines and live FFmpeg check as the receiver.
     media,
   }
+
+  // Resolutions the media picker previewed, for this process's lifetime.
+  const mediaResolutions = createMediaResolutionStore()
+  const mediaPicker = createMediaPicker({
+    service: mediaResolve,
+    store: mediaResolutions,
+    isFfmpegAvailable: () => media.isFfmpegAvailable(),
+  })
+  // A picker resolve belongs to the renderer window that started it.
+  const windowOwner = (sender: WebContents) => ({
+    id: `electron:${sender.id}`,
+    eligible: () => !sender.isDestroyed(),
+  })
 
   // A media task (Mux/Hls) has engineTaskId '' and no aria2 handle, so pause/
   // resume act on the coordinator's live segment gids instead. Returns [] for
@@ -1091,6 +1106,13 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
       }
       return createAndPersist(request as Parameters<typeof handleCreateTask>[0])
     }),
+
+    [Commands.ResolveMedia]: async (sender: WebContents, value: unknown) =>
+      mediaPicker.resolve(windowOwner(sender), value),
+    [Commands.CancelMediaResolve]: async (
+      sender: WebContents,
+      value: unknown
+    ) => mediaPicker.cancel(windowOwner(sender), value),
 
     [Commands.MutateDirectoryPreferences]: directoryPreferences.mutate,
 
@@ -2068,7 +2090,7 @@ export function registerCommandHandlers(ctx: CommandContext): () => void {
       channel === Commands.PickTorrentSource ||
       channel === Commands.CreateTorrent ||
       channel === Commands.SaveTorrentFile ||
-      OPERATION_CHANNELS.has(channel) ||
+      OWNER_SCOPED_CHANNELS.has(channel) ||
       channel === Commands.PickFile ||
       channel === Commands.ResizeWindow ||
       channel === Commands.UpdateMenuContext

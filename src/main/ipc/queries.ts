@@ -7,6 +7,7 @@ import { getFfmpegInstallStatus } from '@core/ffmpeg/verified-install'
 import { pathExists } from '@core/fs/path-exists'
 import type { GeoIPManager } from '@core/geoip/geo-ip-manager'
 import { createGetGeoIPStatusHandler } from '@core/geoip/get-geo-ip-status'
+import { matchMediaResolvers } from '@core/media-resolve/media-picker-handlers'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
 import { readCommandGraph } from '@core/plugin/commands/command-graph'
 import type { GrantsManager } from '@core/plugin/grants/grants-manager'
@@ -291,6 +292,9 @@ export function buildQueryHandlers(ctx: QueryContext): QueryHandlerMap {
 
     [Queries.GetFfmpegDetection]: async () =>
       capabilityHost.ffmpeg.refreshDetection(detectFfmpeg),
+
+    [Queries.MatchMediaResolvers]: async (payload: unknown) =>
+      matchMediaResolvers(pluginRegistry, payload),
 
     [Queries.GetTaskBtTracker]: createGetTaskBtTrackerHandler({
       engineAdapter,
