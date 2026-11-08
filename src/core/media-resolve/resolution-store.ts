@@ -19,6 +19,12 @@ export interface MediaResolutionStore {
    */
   get(id: string, ownerId?: string | null): StoredResolution | null
   /**
+   * Record `id` even after it expired, while it is still retained: an
+   * expired record can no longer be reused, but still names the page and
+   * the resolver its preview came from.
+   */
+  peek(id: string): StoredResolution | null
+  /**
    * Replace the media of live record `id` with an extended copy (entries
    * loaded later), keeping its owner and lifetime: loading more entries
    * makes the earlier entries' stream URLs no fresher. Null when the record
@@ -145,6 +151,12 @@ export function createMediaResolutionStore(
       const record = records.get(id)
       if (!record || record.expiresAt <= now()) return null
       if (ownerId !== undefined && record.ownerId !== ownerId) return null
+      return publicRecord(record)
+    },
+
+    peek(id) {
+      const record = records.get(id)
+      if (!record || now() - record.storedAt > LIMITS.retainMs) return null
       return publicRecord(record)
     },
 

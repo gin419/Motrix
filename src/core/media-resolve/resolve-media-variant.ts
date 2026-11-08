@@ -84,10 +84,16 @@ export async function resolveMediaVariant(
   return { media, entry: selection.entry, variant: selection.variant }
 }
 
+/** The store operations a pick uses. */
+export type PickResolutionStore = Pick<
+  MediaResolutionStore,
+  'get' | 'peek' | 'refresh' | 'replace'
+>
+
 export interface ResolvePickedMediaVariantOptions {
   isFfmpegAvailable: () => Promise<boolean>
   /** Previewed resolutions; without it every pick resolves the page again. */
-  store?: Pick<MediaResolutionStore, 'get' | 'refresh' | 'replace'>
+  store?: PickResolutionStore
 }
 
 /**
@@ -109,7 +115,12 @@ export async function resolvePickedMediaVariant(
   const { resolutionId } = pick
   const store = options.store
   const stored = resolutionId ? store?.get(resolutionId) : null
-  const pinnedPluginId = stored?.media.pluginId
+  // Pin the refresh to the preview's resolver even once the record expired
+  // — the usual reason to refresh. Another resolver claiming the page may
+  // reuse the same ids for different parts or qualities.
+  const pinnedPluginId = resolutionId
+    ? store?.peek(resolutionId)?.media.pluginId
+    : undefined
   let media =
     stored?.media.sourceUrl === url &&
     service.eligibleResolver(url, stored.media.pluginId)

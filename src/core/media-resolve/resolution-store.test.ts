@@ -47,6 +47,17 @@ describe('media resolution store lifetime', () => {
     expect(store.get(record.id)).toBeNull()
   })
 
+  it('still names an expired record’s resolver until the record is dropped', () => {
+    const { store, advance } = setup()
+    const record = store.put(media(), 'owner-a')
+    advance(LIMITS.maxTtlMs)
+    expect(store.get(record.id)).toBeNull()
+    expect(store.peek(record.id)?.media.pluginId).toBe('example.media-resolver')
+    advance(LIMITS.retainMs - LIMITS.maxTtlMs + 1)
+    expect(store.peek(record.id)).toBeNull()
+    expect(store.peek('id-unknown')).toBeNull()
+  })
+
   it('stops reusing a resolution a minute before its stream URLs expire', () => {
     const { store, advance, now } = setup()
     const record = store.put(media('Clip', now() + 5 * 60_000), 'owner-a')

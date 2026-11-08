@@ -18,8 +18,8 @@ import {
   planMediaName,
 } from '@core/media-resolve/dispatch-variant'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
-import type { MediaResolutionStore } from '@core/media-resolve/resolution-store'
 import {
+  type PickResolutionStore,
   type ResolvedMediaVariant,
   resolveMediaVariant,
   resolvePickedMediaVariant,
@@ -224,7 +224,7 @@ export interface CreateTaskDeps {
    * its preview's resolution while it is fresh instead of resolving the
    * page again.
    */
-  mediaResolutions?: Pick<MediaResolutionStore, 'get' | 'refresh' | 'replace'>
+  mediaResolutions?: PickResolutionStore
   /** Re-adds a terminal BT task against its final layout with integrity
    * checking. Shell command handlers inject the existing reAddTask action. */
   reuseExistingBt?: (taskId: string) => Promise<void>

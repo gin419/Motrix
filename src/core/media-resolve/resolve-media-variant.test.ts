@@ -781,12 +781,12 @@ describe('resolvePickedMediaVariant', () => {
   })
 
   function setup(
-    answer: (args: Record<string, unknown>) => unknown,
+    answer: (args: Record<string, unknown>, pluginId: string) => unknown,
     registry = fakeRegistry(site())
   ) {
     const invokeCommand = vi.fn(
-      async (_id: string, _cmd: string, args: Record<string, unknown>) =>
-        answer(args)
+      async (id: string, _cmd: string, args: Record<string, unknown>) =>
+        answer(args, id)
     )
     const host = { activate: vi.fn(async () => undefined), invokeCommand }
     let clock = 1_000_000
@@ -849,6 +849,59 @@ describe('resolvePickedMediaVariant', () => {
     // The refresh is kept for later picks from the same preview.
     await t.pick({ resolutionId, entryId: 'p2', variantId: 'v480' })
     expect(t.invokeCommand).toHaveBeenCalledOnce()
+  })
+
+  describe('an expired preview stays with the resolver that answered it', () => {
+    const FIRST = 'example.first-resolver'
+    const SECOND = 'example.second-resolver'
+    const claimants = () => {
+      const first = plugin({
+        id: FIRST,
+        origin: 'builtin',
+        hostPermissions: ['*://*.media.test/*'],
+      })
+      const second = plugin({
+        id: SECOND,
+        hostPermissions: ['*://*.media.test/*'],
+      })
+      return { first, second, registry: fakeRegistry(first, second) }
+    }
+
+    it('refreshes with the second resolver even once the first answers again', async () => {
+      const { registry } = claimants()
+      let firstFails = true
+      const t = setup((_args, pluginId) => {
+        if (pluginId === FIRST && firstFails) throw new Error('timed out')
+        return series()
+      }, registry)
+      const resolutionId = await t.preview()
+      expect(t.store.get(resolutionId)?.media.pluginId).toBe(SECOND)
+      firstFails = false
+      t.advance(11 * 60_000)
+      t.invokeCommand.mockClear()
+      const picked = await t.pick({
+        resolutionId,
+        entryId: 'p1',
+        variantId: 'v1080',
+      })
+      expect(picked.media.pluginId).toBe(SECOND)
+      expect(t.invokeCommand.mock.calls.map(([id]) => id)).toEqual([SECOND])
+      expect(t.store.get(resolutionId)?.media.pluginId).toBe(SECOND)
+    })
+
+    it('fails as variant-gone rather than asking another resolver once the original is disabled', async () => {
+      const { first, registry } = claimants()
+      const t = setup(() => series(), registry)
+      const resolutionId = await t.preview()
+      expect(t.store.get(resolutionId)?.media.pluginId).toBe(FIRST)
+      first.enabled = false
+      t.advance(11 * 60_000)
+      t.invokeCommand.mockClear()
+      await expect(
+        t.pick({ resolutionId, entryId: 'p1', variantId: 'v1080' })
+      ).rejects.toMatchObject({ failure: 'variant-gone', pluginId: FIRST })
+      expect(t.invokeCommand).not.toHaveBeenCalled()
+    })
   })
 
   it('fails as variant-gone when a refreshed resolution no longer offers the pick', async () => {
