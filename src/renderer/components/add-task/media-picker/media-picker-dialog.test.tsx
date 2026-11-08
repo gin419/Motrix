@@ -533,6 +533,42 @@ describe('MediaPickerDialog', () => {
     expect(screen.getByRole('button', { name: 'Download (0)' })).toBeDisabled()
   })
 
+  it('offers a height ceiling for parts whose qualities are not loaded yet', async () => {
+    resolveWith({
+      status: 'ok',
+      preview: preview({
+        entries: [
+          entry(1),
+          entry(2, { variants: null }),
+          entry(3, { variants: null }),
+        ],
+      }),
+    })
+    renderDialog()
+    await screen.findByText('Sample Series')
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'P1 Episode 1' })
+    )
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'P2 Episode 2' })
+    )
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'P3 Episode 3' })
+    )
+    const quality = screen.getByLabelText('Quality')
+    expect(
+      within(quality)
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    ).toEqual(['Best available', 'Up to 1080P', 'Up to 480P'])
+    await userEvent.selectOptions(quality, 'height:480')
+    await userEvent.click(screen.getByRole('button', { name: 'Download (2)' }))
+    await waitFor(() => expect(createCalls()).toHaveLength(2))
+    expect(createCalls().map((call) => call.mediaPick?.maxHeight)).toEqual([
+      480, 480,
+    ])
+  })
+
   it('marks qualities that need the missing FFmpeg', async () => {
     resolveWith({
       status: 'ok',

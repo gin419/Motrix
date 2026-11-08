@@ -113,7 +113,9 @@ function variantBlock(
  * The quality choices for the picked entries. One entry with loaded
  * variants offers its exact variants; several entries share one ladder of
  * heights applied as `maxHeight`, so each part gets its best variant at or
- * below the choice.
+ * below the choice. Entries whose variants are not loaded yet borrow the
+ * heights of the preview's loaded entries, as parts of one collection
+ * usually come in the same qualities.
  */
 export function planQualities(
   preview: MediaPreview,
@@ -137,7 +139,10 @@ export function planQualities(
     return { options, defaultValue: preferred.value }
   }
   const heights = new Map<number, string>()
-  for (const entry of entries) {
+  const ladderSources = entries.some((entry) => entry.variants === null)
+    ? [...entries, ...preview.entries.filter((e) => e.variants !== null)]
+    : entries
+  for (const entry of ladderSources) {
     for (const variant of entry.variants ?? []) {
       if (variant.height === undefined) continue
       if (variantBlock(variant, preview.ffmpegAvailable)) continue
