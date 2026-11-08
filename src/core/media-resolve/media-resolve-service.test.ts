@@ -102,12 +102,30 @@ describe('makeMediaResolveService', () => {
   it('writes rejected-result issue paths to the plugin log, without values', async () => {
     const { svc, pluginWarn } = service(
       async () => ({
-        kind: 'mux',
-        video: {
-          url: 'https://cdn.media.test/v.m4s',
-          headers: { Cookie: 'secret-value' },
-        },
-        audio: { url: 'https://cdn.media.test/a.m4s' },
+        kind: 'media',
+        schemaVersion: 1,
+        title: 'Example',
+        entries: [
+          {
+            id: 'only',
+            title: 'Only',
+            variants: [
+              {
+                id: 'q1',
+                label: 'Q1',
+                container: 'mp4',
+                source: {
+                  kind: 'mux',
+                  video: {
+                    url: 'https://cdn.media.test/v.m4s',
+                    headers: { Cookie: 'secret-value' },
+                  },
+                  audio: { url: 'https://cdn.media.test/a.m4s' },
+                },
+              },
+            ],
+          },
+        ],
       }),
       resolver('example.media-resolver')
     )
@@ -119,8 +137,6 @@ describe('makeMediaResolveService', () => {
       {
         issues: [
           'entries.0.variants.0.source.video.headers: header not allowed',
-          // The legacy pair's single header set also applies to the audio leg.
-          'entries.0.variants.0.source.audio.headers: header not allowed',
         ],
       }
     )

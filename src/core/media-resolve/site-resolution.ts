@@ -31,9 +31,9 @@ export const RESOLVE_BUDGET_MS = { resolve: 45_000, entries: 30_000 } as const
 
 /**
  * The only headers a resolver may attach to a stream request (matched
- * case-insensitively). Any other header makes the result invalid. Cookie and
- * Authorization never travel to CDN hosts; a resolver uses them only on its
- * own API calls.
+ * case-insensitively). Any other header makes a versioned result invalid and
+ * is dropped from a legacy one. Cookie and Authorization never travel to CDN
+ * hosts; a resolver uses them only on its own API calls.
  */
 export const STREAM_HEADER_ALLOWLIST = [
   'referer',
@@ -42,6 +42,10 @@ export const STREAM_HEADER_ALLOWLIST = [
   'accept',
   'accept-language',
 ] as const
+
+const ALLOWED_STREAM_HEADERS: ReadonlySet<string> = new Set(
+  STREAM_HEADER_ALLOWLIST
+)
 
 /** Unavailability reasons the host has localized text for. */
 export const KNOWN_UNAVAILABLE_REASONS = [
@@ -259,7 +263,10 @@ export type SiteResolveParse =
 /**
  * Validate and normalize a raw `${id}.resolve` result. A legacy mux pair is
  * normalized to one current entry with one `default` variant; its video
- * headers also apply to the audio leg, as they did before.
+ * headers also apply to the audio leg, as they did before. Legacy headers
+ * outside the allowlist are dropped rather than failing the result, the way
+ * the pre-contract host dropped Cookie; a versioned result that carries one
+ * is invalid.
  */
 export function parseSiteResolveResult(raw: unknown): SiteResolveParse {
   if (raw === null || raw === undefined) return { kind: 'declined' }
@@ -319,6 +326,8 @@ function normalizeLegacyMux(
 ): SiteResolutionV1 {
   const title = legacy.title ?? ''
   const headers = legacy.video.headers
+    ? keepAllowlistedHeaders(legacy.video.headers)
+    : undefined
   return {
     kind: 'media',
     schemaVersion: 1,
@@ -343,6 +352,15 @@ function normalizeLegacyMux(
       },
     ],
   }
+}
+
+function keepAllowlistedHeaders(
+  headers: Record<string, string>
+): Record<string, string> | undefined {
+  const kept = Object.entries(headers).filter(([name]) =>
+    ALLOWED_STREAM_HEADERS.has(name.toLowerCase())
+  )
+  return kept.length > 0 ? Object.fromEntries(kept) : undefined
 }
 
 /**
@@ -396,9 +414,8 @@ function admitStream(stream: StreamRef, path: string, issues: string[]): void {
     )
   }
   if (stream.headers) {
-    const allowed = new Set<string>(STREAM_HEADER_ALLOWLIST)
     for (const name of Object.keys(stream.headers)) {
-      if (!allowed.has(name.toLowerCase())) {
+      if (!ALLOWED_STREAM_HEADERS.has(name.toLowerCase())) {
         issues.push(`${path}.headers: header not allowed`)
         return
       }

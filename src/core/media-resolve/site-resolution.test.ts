@@ -175,14 +175,49 @@ describe('parseSiteResolveResult', () => {
     expect(issues.join(' ')).not.toContain('secret')
   })
 
-  it('applies the allowlist to legacy results too', () => {
-    expectInvalid(
-      parseSiteResolveResult({
-        kind: 'mux',
-        video: { url: VIDEO, headers: { Authorization: 'Bearer x' } },
-        audio: { url: AUDIO },
-      })
-    )
+  it('drops legacy headers outside the allowlist instead of failing the result', () => {
+    // A pre-contract resolver keeps working with the headers the host allows;
+    // the others never reach a stream request.
+    const result = parseSiteResolveResult({
+      kind: 'mux',
+      video: {
+        url: VIDEO,
+        headers: {
+          referer: 'https://media.test/',
+          Cookie: 'sid=secret',
+          Authorization: 'Bearer secret',
+          'X-Site-Token': 'secret',
+        },
+      },
+      audio: { url: AUDIO },
+    })
+    expect(result.kind).toBe('media')
+    const source =
+      result.kind === 'media'
+        ? result.resolution.entries[0]?.variants?.[0]?.source
+        : undefined
+    expect(source).toEqual({
+      kind: 'mux',
+      video: { url: VIDEO, headers: { referer: 'https://media.test/' } },
+      audio: { url: AUDIO, headers: { referer: 'https://media.test/' } },
+    })
+  })
+
+  it('omits legacy headers entirely when none are allowlisted', () => {
+    const result = parseSiteResolveResult({
+      kind: 'mux',
+      video: { url: VIDEO, headers: { Authorization: 'Bearer secret' } },
+      audio: { url: AUDIO },
+    })
+    const source =
+      result.kind === 'media'
+        ? result.resolution.entries[0]?.variants?.[0]?.source
+        : undefined
+    expect(source).toEqual({
+      kind: 'mux',
+      video: { url: VIDEO },
+      audio: { url: AUDIO },
+    })
   })
 
   it.each([
