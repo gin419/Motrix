@@ -52,8 +52,13 @@ const rules = [
       'use-external-hydration.ts',
       'drop-zone.tsx',
       'add-task-form.tsx',
-      // The form's integration tests assert its IPC contract.
+      // The media picker's IPC-aware hooks.
+      'media-picker/use-media-resolve.ts',
+      'media-picker/use-media-resolver-matches.ts',
+      'media-picker/use-create-media-task.ts',
+      // The form's and the picker's integration tests assert their IPC contract.
       'add-task-form.test.tsx',
+      'media-picker/media-picker-dialog.test.tsx',
     ],
   },
   {

@@ -11,15 +11,18 @@ const TARGETS = [
   // bundles every catalog, so the 13 site-resolution messages in all 26
   // locales add ~36 KiB. The media picker's resolve preview, cancel and
   // resolution store add ~6 KiB; creating tasks from picks adds ~2 KiB and
-  // its variant-gone message in all 26 locales ~5 KiB.
-  { name: 'main', initial: 2 * MIB, total: 5.5 * MIB + 76 * 1024 },
+  // its variant-gone message in all 26 locales ~5 KiB. The media picker
+  // dialog's 28 messages in all 26 locales add ~47 KiB.
+  { name: 'main', initial: 2 * MIB, total: 5.5 * MIB + 124 * 1024 },
   { name: 'preload', initial: 80 * 1024, total: 80 * 1024 },
   { name: 'worker', initial: 48 * 1024, total: 48 * 1024 },
   // Native NAS strings in all 26 catalogs add ~60 KiB; the Web-only settings
   // dialog stays lazy and is excluded from Electron. Startup ceilings are unchanged.
-  { name: 'renderer', initial: 2.75 * MIB, total: 8 * MIB + 64 * 1024 },
-  // The lazy DSM storage recovery page and its localized controls add 9 KiB.
-  { name: 'renderer.web', initial: 2.75 * MIB, total: 8 * MIB + 108 * 1024 },
+  // The Add Task media picker and its messages in all 26 catalogs add ~54 KiB.
+  { name: 'renderer', initial: 2.75 * MIB, total: 8 * MIB + 120 * 1024 },
+  // The lazy DSM storage recovery page and its localized controls add 9 KiB;
+  // the media picker adds ~51 KiB.
+  { name: 'renderer.web', initial: 2.75 * MIB, total: 8 * MIB + 160 * 1024 },
   // The shared operation runtime brings total server JS to ~5.01 MiB.
   { name: 'server', initial: 2 * MIB, total: 5.25 * MIB },
 ]

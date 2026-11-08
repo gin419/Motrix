@@ -10,6 +10,7 @@ import type { PlatformServices } from '@renderer/platform/services'
 import { PlatformServicesProvider } from '@renderer/platform/services'
 import { Commands } from '@shared/protocol/commands'
 import { Events } from '@shared/protocol/events'
+import { Queries } from '@shared/protocol/queries'
 import { holdExitAnimation } from '@test-utils/hold-exit-animation'
 import { AddTaskForm } from './add-task-form'
 
@@ -447,6 +448,206 @@ describe('AddTaskForm', () => {
       { detail: 'Confirm your age in the plugin settings' }
     )
     expect(localStorage.getItem('motrix.pending-create-inputs.v1')).toBeNull()
+  })
+
+  describe('media picker', () => {
+    const page = 'https://media.test/watch/1'
+    const preview = {
+      resolutionId: '0190a6d0-0000-7000-8000-000000000001',
+      pluginId: 'example.media-resolver',
+      pluginName: 'Example Resolver',
+      title: 'Sample Clip',
+      defaultEntryId: 'clip',
+      ffmpegAvailable: true,
+      expiresAt: Date.now() + 600_000,
+      folderName: 'Sample Clip',
+      warnAboveParts: 50,
+      entries: [
+        {
+          id: 'clip',
+          title: 'Sample Clip',
+          current: true,
+          variants: [
+            {
+              id: 'hd',
+              label: '720P',
+              height: 720,
+              container: 'mp4',
+              requiresFfmpeg: false,
+              recommended: true,
+            },
+          ],
+        },
+      ],
+    }
+
+    function serveMedia(create: (request: any) => unknown) {
+      invokeMock.mockImplementation(async (channel: string, request: any) => {
+        if (channel === Queries.MatchMediaResolvers)
+          return {
+            matches: request.urls.map((url: string) =>
+              url === page
+                ? {
+                    pluginId: 'example.media-resolver',
+                    pluginName: 'Example Resolver',
+                  }
+                : null
+            ),
+          }
+        if (channel === Commands.ResolveMedia) return { status: 'ok', preview }
+        if (channel === Commands.CreateTask) return create(request)
+        return {}
+      })
+    }
+
+    it('adds a picked part and removes its line from the form', async () => {
+      serveMedia(() => ({ gid: 'gid-1', taskId: 'task-1' }))
+      const onSubmitSuccess = vi.fn()
+      renderForm({
+        onSubmitSuccess,
+        defaultValues: {
+          tab: 'links',
+          urls: `${page}\nhttps://example.com/file.zip`,
+          saveDir: '/d',
+        },
+      })
+      const chip = await screen.findByRole('button', {
+        name: 'Example Resolver: Choose parts & quality',
+      })
+      expect(
+        screen.queryByRole('button', { name: /Line 2/ })
+      ).not.toBeInTheDocument()
+      await userEvent.click(chip)
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Download (1)' })
+      )
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'URLs' })).toHaveValue(
+          'https://example.com/file.zip'
+        )
+      )
+      expect(invokeMock).toHaveBeenCalledWith(
+        Commands.CreateTask,
+        expect.objectContaining({
+          type: 'http',
+          uris: [page],
+          saveDir: '/d',
+          mediaPick: {
+            resolutionId: preview.resolutionId,
+            entryId: 'clip',
+            variantId: 'hd',
+          },
+        })
+      )
+      // Another line is still waiting for Download.
+      expect(onSubmitSuccess).not.toHaveBeenCalled()
+      expect(mockServices.notify).toHaveBeenCalledWith(
+        'info',
+        'task.add.created'
+      )
+    })
+
+    it('finishes the submission when the picked page was the only line', async () => {
+      serveMedia(() => ({ gid: 'gid-1', taskId: 'task-1' }))
+      const onSubmitSuccess = vi.fn()
+      renderForm({
+        onSubmitSuccess,
+        defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+      })
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'Example Resolver: Choose parts & quality',
+        })
+      )
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Download (1)' })
+      )
+      await waitFor(() =>
+        expect(onSubmitSuccess).toHaveBeenCalledWith('task-1')
+      )
+    })
+
+    it('offers no picker when re-downloading a task', async () => {
+      serveMedia(() => ({ gid: 'gid-1' }))
+      renderForm({
+        purpose: 'redownload',
+        defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+      })
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      expect(
+        screen.queryByRole('button', { name: /Choose parts/ })
+      ).not.toBeInTheDocument()
+      expect(invokeMock).not.toHaveBeenCalledWith(
+        Queries.MatchMediaResolvers,
+        expect.anything()
+      )
+    })
+
+    it('retries a page the resolver rejected as a plain file', async () => {
+      serveMedia((request) => {
+        if (request.mediaResolve === 'skip') return { gid: 'gid-page' }
+        throw new Error(
+          "Error invoking remote method 'command:createTask': Error: task.add.media.unavailable.loginRequired"
+        )
+      })
+      const onSubmitSuccess = vi.fn()
+      renderForm({
+        onSubmitSuccess,
+        defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+      })
+      await userEvent.click(screen.getByRole('button', { name: /^download$/i }))
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Download page as a file' })
+      )
+      await waitFor(() =>
+        expect(onSubmitSuccess).toHaveBeenCalledWith('gid-page')
+      )
+      const creates = invokeMock.mock.calls.filter(
+        ([channel]) => channel === Commands.CreateTask
+      )
+      expect(creates).toHaveLength(2)
+      expect(creates[1][1]).toMatchObject({
+        uris: [page],
+        mediaResolve: 'skip',
+      })
+      expect(creates[1][1].requestId).not.toBe(creates[0][1].requestId)
+
+      // The choice was for that submission; the next paste resolves again.
+      await userEvent.type(screen.getByRole('textbox', { name: 'URLs' }), page)
+      await userEvent.click(screen.getByRole('button', { name: /^download$/i }))
+      await waitFor(() =>
+        expect(
+          invokeMock.mock.calls.filter(
+            ([channel]) => channel === Commands.CreateTask
+          )
+        ).toHaveLength(3)
+      )
+      expect(
+        invokeMock.mock.calls.filter(
+          ([channel]) => channel === Commands.CreateTask
+        )[2][1]
+      ).not.toHaveProperty('mediaResolve')
+    })
+
+    it('never offers protected media as a plain file', async () => {
+      serveMedia(() => {
+        throw new Error(
+          "Error invoking remote method 'command:createTask': Error: task.add.media.unavailable.protected"
+        )
+      })
+      renderForm({
+        defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+      })
+      await userEvent.click(screen.getByRole('button', { name: /^download$/i }))
+      expect(
+        await screen.findByText(
+          'This media is protected by DRM or encryption and can’t be downloaded.'
+        )
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Download page as a file' })
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('renders links tab by default', () => {

@@ -4,6 +4,7 @@ import type { AddTaskFormValues } from '@shared/schemas/add-task'
 import { useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { AdvancedPanel } from './advanced-panel'
+import { MediaPickerChips } from './media-picker/media-picker-chips'
 import { UrlTextarea } from './url-textarea'
 
 export function LinksTabPanel({
@@ -41,6 +42,7 @@ export function LinksTabPanel({
         </Alert>
       )}
       <UrlTextarea name="urls" autoFocus />
+      <MediaPickerChips />
       <DirectoryPicker
         name="saveDir"
         variant="compact"
