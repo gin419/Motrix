@@ -434,13 +434,23 @@ function measureJsonBytes(value: unknown): number | null {
   }
 }
 
-function dropNullProperties(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(dropNullProperties)
+// The deepest schema field (entries → variants → source → stream → headers →
+// value) sits at depth 8. Below this bound nothing can match the schema, and
+// zod drops unknown keys without walking them, so deeper values are returned
+// as-is. A result nested thousands deep fits under the byte cap and would
+// otherwise overflow the stack here instead of becoming `invalid`.
+const NULL_STRIP_MAX_DEPTH = 16
+
+function dropNullProperties(value: unknown, depth = 0): unknown {
   if (value === null || typeof value !== 'object') return value
+  if (depth >= NULL_STRIP_MAX_DEPTH) return value
+  if (Array.isArray(value)) {
+    return value.map((child) => dropNullProperties(child, depth + 1))
+  }
   const out: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(value)) {
     if (child === null) continue
-    out[key] = dropNullProperties(child)
+    out[key] = dropNullProperties(child, depth + 1)
   }
   return out
 }

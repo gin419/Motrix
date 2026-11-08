@@ -418,6 +418,26 @@ describe('parseSiteResolveResult', () => {
     ])
   })
 
+  it('ignores a deeply nested unknown property without overflowing the stack', () => {
+    let deep: unknown = null
+    for (let depth = 0; depth < 20_000; depth += 1) deep = [deep]
+    const result = parseSiteResolveResult(v1({ extra: deep }))
+    expect(result.kind).toBe('media')
+    expect(result.kind === 'media' && 'extra' in result.resolution).toBe(false)
+  })
+
+  it('reports a deeply nested schema field as invalid instead of throwing', () => {
+    let deep: unknown = { kind: 'mux' }
+    for (let depth = 0; depth < 20_000; depth += 1) deep = { nested: deep }
+    expectInvalid(
+      parseSiteResolveResult({
+        kind: 'mux',
+        video: deep,
+        audio: { url: AUDIO },
+      })
+    )
+  })
+
   it('removes control characters from titles', () => {
     const result = parseSiteResolveResult(
       v1({ title: 'Line\u0000one\u202e\tend ' })
