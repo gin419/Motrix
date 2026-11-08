@@ -68,6 +68,26 @@ describe('dispatchMediaVariant', () => {
     })
   })
 
+  it('passes each mux leg’s distinct mirrors on to the pipeline', async () => {
+    const target = fakeMediaTarget()
+    const raw = muxVariant('https://cdn.example/v', 'https://cdn.example/a')
+    raw.source.video = {
+      url: 'https://cdn.example/v',
+      mirrors: ['https://cdn.example/v', 'https://m1.example/v'],
+    } as typeof raw.source.video
+    raw.source.audio = {
+      url: 'https://cdn.example/a',
+      mirrors: ['https://m1.example/a', 'https://m2.example/a'],
+    } as typeof raw.source.audio
+    await dispatchMediaVariant(variant(raw), base, target)
+    expect(target.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        videoMirrors: ['https://m1.example/v'],
+        audioMirrors: ['https://m1.example/a', 'https://m2.example/a'],
+      })
+    )
+  })
+
   it.each([
     ['hls', 'ts', 'ts'],
     ['dash', 'ts', 'mp4'],

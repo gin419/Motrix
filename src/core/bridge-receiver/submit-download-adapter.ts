@@ -78,6 +78,9 @@ export interface AdaptedMux {
   finalName: string
   videoUrl: string
   audioUrl: string
+  /** Same-file mirrors a site resolver offered for each leg. */
+  videoMirrors?: string[]
+  audioMirrors?: string[]
   sanitizedHeaders: Record<string, string>
   container: 'mp4' | 'mkv'
   /** BridgeSourceMeta for bridge-originated mux tasks; null for desktop

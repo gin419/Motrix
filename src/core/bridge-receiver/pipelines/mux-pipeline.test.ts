@@ -107,6 +107,25 @@ describe('MuxPipeline', () => {
     expect(job.finalName).toBe('clip.mkv')
   })
 
+  it('gives each leg its own mirrors and leaves a leg without mirrors bare', async () => {
+    const coordinator = {
+      submit: vi.fn(async (job: MediaJob) => ({ taskId: job.taskId ?? 'gen' })),
+    }
+    const adapted = makeAdaptedMux({
+      videoMirrors: ['https://mirror.example/video.mp4'],
+    })
+    await new MuxPipeline({ coordinator }).dispatch(adapted)
+    const job = coordinator.submit.mock.calls[0]![0] as MediaJob
+    expect(job.video.segments).toEqual([
+      {
+        url: adapted.videoUrl,
+        index: 0,
+        mirrors: ['https://mirror.example/video.mp4'],
+      },
+    ])
+    expect(job.audio?.segments).toEqual([{ url: adapted.audioUrl, index: 0 }])
+  })
+
   it('omits durationSec from job when not present in adapted', async () => {
     const coordinator = {
       submit: vi.fn(async (job: MediaJob) => ({ taskId: job.taskId ?? 'gen' })),

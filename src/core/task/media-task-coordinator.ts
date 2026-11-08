@@ -241,11 +241,16 @@ export class MediaTaskCoordinator {
     onAccepted?: () => void
   ): Promise<{ taskId: string }> {
     const admitPlan = (plan: SegmentPlan): SegmentPlan => {
-      const admitPart = <T extends { url: string; key?: { uri: string } }>(
+      const admitPart = <
+        T extends { url: string; mirrors?: string[]; key?: { uri: string } },
+      >(
         part: T
       ): T => ({
         ...part,
         url: admitHttpSource(part.url),
+        ...(part.mirrors
+          ? { mirrors: part.mirrors.map((mirror) => admitHttpSource(mirror)) }
+          : {}),
         ...(part.key
           ? { key: { ...part.key, uri: admitHttpSource(part.key.uri) } }
           : {}),

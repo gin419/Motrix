@@ -20,6 +20,12 @@ export interface InitSegment {
 
 export interface MediaPart {
   url: string
+  /**
+   * Other URLs serving the same bytes (a site resolver's mirrors). aria2
+   * receives them with `url` as one download, so it can fall back or split
+   * across hosts. Never set for byte-range parts.
+   */
+  mirrors?: string[]
   index: number
   byteRange?: ByteRange
   key?: KeyRef

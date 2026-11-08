@@ -610,13 +610,15 @@ describe('MediaTaskCoordinator.start', () => {
     expect(JSON.stringify(saved)).not.toContain('mediaFiles')
   })
 
-  it.each(['segment', 'init', 'key'])(
+  it.each(['segment', 'mirror', 'init', 'key'])(
     'rejects an invalid %s before saving or creating directories',
     async (kind) => {
       const { deps, taskManager, downloaderFakes } = makeDeps()
       const job = baseJob()
       const invalid = 'https://cdn.test/a\\b'
       if (kind === 'segment') job.video.segments[0].url = invalid
+      else if (kind === 'mirror')
+        job.video.segments[0].mirrors = ['https://mirror.test/ok', invalid]
       else if (kind === 'init') job.video.init = { url: invalid }
       else
         job.video.segments[0].key = {

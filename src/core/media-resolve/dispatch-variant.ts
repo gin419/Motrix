@@ -91,11 +91,16 @@ export async function dispatchMediaVariant(
       : {}),
   }
   if (source.kind === 'mux') {
+    // aria2 gets each leg's mirrors with its URL as one job.
+    const videoMirrors = streamUris(source.video).slice(1)
+    const audioMirrors = streamUris(source.audio).slice(1)
     const adapted: AdaptedMux = {
       ...common,
       kind: 'mux',
       videoUrl: source.video.url,
       audioUrl: source.audio.url,
+      ...(videoMirrors.length > 0 ? { videoMirrors } : {}),
+      ...(audioMirrors.length > 0 ? { audioMirrors } : {}),
       sanitizedHeaders: headersFor(source.video.headers),
       // The contract rejects a ts mux variant.
       container: variant.container === 'mkv' ? 'mkv' : 'mp4',

@@ -1,3 +1,4 @@
+import type { MediaPart } from '@core/media/segment-plan'
 import type {
   MediaJob,
   MediaTaskCoordinator,
@@ -25,12 +26,12 @@ export class MuxPipeline {
       kind: 'mux',
       video: {
         container: 'single',
-        segments: [{ url: adapted.videoUrl, index: 0 }],
+        segments: [leg(adapted.videoUrl, adapted.videoMirrors)],
         isComplete: true,
       },
       audio: {
         container: 'single',
-        segments: [{ url: adapted.audioUrl, index: 0 }],
+        segments: [leg(adapted.audioUrl, adapted.audioMirrors)],
         isComplete: true,
       },
       headers: adapted.sanitizedHeaders,
@@ -44,5 +45,13 @@ export class MuxPipeline {
         : {}),
     }
     return this.deps.coordinator.submit(job)
+  }
+}
+
+function leg(url: string, mirrors: string[] | undefined): MediaPart {
+  return {
+    url,
+    index: 0,
+    ...(mirrors?.length ? { mirrors: [...mirrors] } : {}),
   }
 }
