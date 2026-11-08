@@ -453,9 +453,17 @@ describe('parseSiteResolveResult', () => {
     ])
   })
 
-  it('ignores a deeply nested unknown property without overflowing the stack', () => {
+  it('rejects a deeply nested unknown property without overflowing the stack', () => {
     let deep: unknown = null
     for (let depth = 0; depth < 20_000; depth += 1) deep = [deep]
+    expect(expectInvalid(parseSiteResolveResult(v1({ extra: deep })))).toEqual([
+      'result nested deeper than 32 levels',
+    ])
+  })
+
+  it('drops a moderately nested unknown property', () => {
+    let deep: unknown = null
+    for (let depth = 0; depth < 20; depth += 1) deep = [deep]
     const result = parseSiteResolveResult(v1({ extra: deep }))
     expect(result.kind).toBe('media')
     expect(result.kind === 'media' && 'extra' in result.resolution).toBe(false)

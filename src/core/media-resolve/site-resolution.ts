@@ -271,6 +271,13 @@ export type SiteResolveParse =
 export function parseSiteResolveResult(raw: unknown): SiteResolveParse {
   if (raw === null || raw === undefined) return { kind: 'declined' }
 
+  if (exceedsDepth(raw, RESULT_MAX_DEPTH)) {
+    return {
+      kind: 'invalid',
+      issues: [`result nested deeper than ${RESULT_MAX_DEPTH} levels`],
+    }
+  }
+
   const bytes = measureJsonBytes(raw)
   if (bytes === null) return { kind: 'invalid', issues: ['not serializable'] }
   if (bytes > L.resultBytes) {
@@ -440,6 +447,24 @@ function sanitizeText(text: string): string {
     out += isControlChar(char.codePointAt(0) ?? 0) ? ' ' : char
   }
   return out.replace(/\s+/g, ' ').trim()
+}
+
+// Valid results nest at most 8 levels deep. Checking depth without recursion
+// keeps very deep input from reaching JSON.stringify, whose stack limit (and
+// so the outcome) differs between Node versions.
+const RESULT_MAX_DEPTH = 32
+
+function exceedsDepth(root: unknown, maxDepth: number): boolean {
+  const seen = new WeakSet<object>()
+  const stack: Array<[unknown, number]> = [[root, 0]]
+  while (stack.length > 0) {
+    const [value, depth] = stack.pop() as [unknown, number]
+    if (value === null || typeof value !== 'object' || seen.has(value)) continue
+    if (depth >= maxDepth) return true
+    seen.add(value)
+    for (const child of Object.values(value)) stack.push([child, depth + 1])
+  }
+  return false
 }
 
 function measureJsonBytes(value: unknown): number | null {
