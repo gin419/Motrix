@@ -131,6 +131,7 @@ function makeFfmpegFake() {
       async (_job: unknown, onProgress: (p: { progress: number }) => void) => {
         onProgress({ progress: 0.5 })
         onProgress({ progress: 1 })
+        return { outputDurationSec: null }
       }
     ),
     kill: vi.fn(),
@@ -493,8 +494,8 @@ describe('MediaTaskCoordinator.start', () => {
     const ffmpeg = {
       run: vi.fn((_job: unknown, cb: typeof muxTick) => {
         muxTick = cb
-        return new Promise<void>((resolve) => {
-          finishMux = resolve
+        return new Promise<{ outputDurationSec: null }>((resolve) => {
+          finishMux = () => resolve({ outputDurationSec: null })
         })
       }),
       kill: vi.fn(),
@@ -1200,6 +1201,41 @@ describe('MediaTaskCoordinator.start', () => {
       recursive: true,
       force: true,
     })
+  })
+
+  it('places later decode windows from the muxed output duration when the job has none', async () => {
+    // Desktop paste: no sourceMeta, so job.durationSec is unset. A damaged
+    // first window must still be outvoted by later windows of the output.
+    const probeResults = [
+      { errors: 400, frames: 250 },
+      { errors: 0, frames: 250 },
+      { errors: 0, frames: 250 },
+    ]
+    const ffmpeg = {
+      ...makeFfmpegFake(),
+      run: vi.fn(async () => ({ outputDurationSec: 600.4 })),
+      probeDecode: vi.fn(async (_job: { startSec?: number }) => ({
+        exitCode: 0,
+        noVideoStream: false,
+        decoderUnavailable: false,
+        timedOut: false,
+        ...(probeResults.shift() ?? { errors: 0, frames: 250 }),
+      })),
+    }
+    const { deps, taskManager } = makeDeps({
+      makeFfmpeg: () =>
+        ffmpeg as unknown as import('@core/ffmpeg/ffmpeg-service').FfmpegService,
+      mintTaskId: () => 'output-duration-test',
+    })
+
+    await new MediaTaskCoordinator(deps).start(baseJob())
+
+    expect(ffmpeg.probeDecode.mock.calls.map(([job]) => job.startSec)).toEqual([
+      0, 300, 450,
+    ])
+    expect(taskManager.getById('output-duration-test')?.status).toBe(
+      TaskStatus.Completed
+    )
   })
 
   it('completes the task when the decode check itself cannot run', async () => {

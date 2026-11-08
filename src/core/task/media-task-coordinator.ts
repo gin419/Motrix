@@ -745,7 +745,7 @@ export class MediaTaskCoordinator {
         throw new Error('mux-failed: ffmpeg executable is unavailable')
       }
 
-      await ffmpeg.run(
+      const muxed = await ffmpeg.run(
         {
           binaryPath: ffmpegBinaryPath,
           videoPath: videoAssembled,
@@ -785,13 +785,15 @@ export class MediaTaskCoordinator {
 
       // Exit code 0 only proves the container was written: `-c copy` happily
       // remuxes a scrambled or encrypted video track into a grey-screen file.
-      // Decode a bounded window before calling the task complete. state.ffmpeg
-      // stays set so cancel() also kills this probe.
+      // Decode bounded windows before calling the task complete. state.ffmpeg
+      // stays set so cancel() also kills this probe. The muxed output's own
+      // duration places the later windows; job.durationSec is only known for
+      // extension submits and describes the source rather than the output.
       const decodeVerdict = await checkVideoDecodable(ffmpeg, {
         binaryPath: ffmpegBinaryPath,
         input: diskPath,
         outputName: finalName,
-        durationSec: job.durationSec,
+        durationSec: muxed.outputDurationSec ?? job.durationSec,
       })
       state.ffmpeg = null
       assertActive()

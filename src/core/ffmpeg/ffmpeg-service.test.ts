@@ -164,6 +164,34 @@ describe('FfmpegService', () => {
     }
   )
 
+  it('reports the output duration from the final progress time', async () => {
+    const child = fakeChild()
+    const run = new FfmpegService().run(
+      { ...VIDEO_ONLY_TS_JOB, durationSec: undefined },
+      () => {},
+      (() => child) as never
+    )
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        'out_time_ms=20000000\nprogress=continue\nout_time_ms=1234500000\nprogress=end\n'
+      )
+    )
+    child.emit('close', 0)
+    await expect(run).resolves.toEqual({ outputDurationSec: 1234.5 })
+  })
+
+  it('reports no output duration when ffmpeg printed no progress time', async () => {
+    const child = fakeChild()
+    const run = new FfmpegService().run(
+      VIDEO_ONLY_TS_JOB,
+      () => {},
+      (() => child) as never
+    )
+    child.emit('close', 0)
+    await expect(run).resolves.toEqual({ outputDurationSec: null })
+  })
+
   it('drops overlong lines and ignores output after cancellation', async () => {
     const child = fakeChild()
     const seen: (number | null)[] = []

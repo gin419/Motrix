@@ -109,6 +109,7 @@ describe('Server extension media downloads', () => {
       .mockImplementation(async (job, progress) => {
         await copyFile(job.videoPath, job.output)
         progress({ progress: 1 })
+        return { outputDurationSec: null }
       })
     const saveDir = path.join(root, 'downloads')
     await mkdir(saveDir)

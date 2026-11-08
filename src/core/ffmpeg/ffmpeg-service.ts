@@ -45,6 +45,14 @@ export function muxerForOutputName(name: string): string {
   return (ext && EXT_TO_MUXER[ext]) || 'mp4'
 }
 
+export interface RemuxResult {
+  /**
+   * Duration of the written output, from ffmpeg's final progress report;
+   * null when ffmpeg reported no output time.
+   */
+  outputDurationSec: number | null
+}
+
 type SpawnImpl = (cmd: string, args: string[]) => ChildProcess
 
 /**
@@ -91,7 +99,7 @@ export class FfmpegService {
     job: RemuxJob,
     onProgress: (p: FfmpegProgress) => void,
     spawnImpl: SpawnImpl = nodeSpawn as SpawnImpl
-  ): Promise<void> {
+  ): Promise<RemuxResult> {
     this.aborted = false
     const args = this.buildArgs(job)
     const child = spawnImpl(job.binaryPath, args)
@@ -159,7 +167,7 @@ export class FfmpegService {
       }
     })
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<RemuxResult>((resolve, reject) => {
       child.on('error', (err) => {
         closed = true
         reject(new Error(`mux-failed: ${err.message}`))
@@ -171,7 +179,10 @@ export class FfmpegService {
         if (this.aborted) return reject(new Error('mux-aborted'))
         if (code === 0) {
           onProgress({ progress: 1 })
-          return resolve()
+          // ffmpeg's `out_time_ms` key is in microseconds despite its name.
+          return resolve({
+            outputDurationSec: outTimeUs > 0 ? outTimeUs / 1_000_000 : null,
+          })
         }
         // Append the last few non-empty stderr lines — ffmpeg names the
         // offending input/stream here. The message MUST still start with
