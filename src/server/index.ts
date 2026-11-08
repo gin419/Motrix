@@ -172,6 +172,7 @@ import {
 import { createApp } from './http/app'
 import { buildServerCommandHandlers } from './ipc/commands'
 import { buildServerQueryHandlers } from './ipc/queries'
+import { translateMediaResolveText } from './media-resolve-text'
 import { createServerMediaRuntime } from './media-runtime'
 import { provisionOperatorToken } from './operator-token'
 import { FnosAccountAuthority } from './platform/fnos/accounts'
@@ -2383,6 +2384,9 @@ async function main() {
             eventBus,
             bridgeBus,
             localize: (code) => code,
+            // Site resolution failures reach the extension as readable
+            // English, where the desktop shell uses the host language.
+            translate: translateMediaResolveText,
             mediaResolve,
             waitForReady: () =>
               supervisor.waitUntilReady(ENGINE_READY_TIMEOUT_MS),
