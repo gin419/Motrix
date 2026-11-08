@@ -3284,6 +3284,60 @@ describe('handleCreateTask site resolution seam', () => {
     expect(options.out).toBe('mine.mp4.motrix')
   })
 
+  it('keeps credentials typed for the page off a resolved direct stream', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        directVariant('https://cdn.other.example/a.mp4', {
+          mirrors: ['https://mirror.other.example/a.mp4'],
+          headers: { Referer: 'https://video.example/' },
+        })
+      )
+    )
+    const deps = makeDeps()
+    const runBeforeCreateHttp = vi.fn(
+      async (ctx: {
+        uris: string[]
+        headers: { name: string; value: string }[]
+      }) => ({
+        final: { ...ctx },
+        contributors: { headers: [] },
+        staged: { allMetadataOps: () => [] },
+      })
+    )
+    deps.orchestrator = { runBeforeCreateHttp } as never
+    await handleCreateTask(
+      {
+        ...pageRequest(),
+        headers: [
+          { name: 'Cookie', value: 'sid=secret' },
+          { name: 'authorization', value: 'Bearer token' },
+          { name: 'Proxy-Authorization', value: 'Basic cHJveHk=' },
+          { name: 'X-Custom', value: 'page-only' },
+          { name: 'Accept-Language', value: 'fr' },
+        ],
+      },
+      { ...deps, mediaResolve, media: fakeMediaTarget() }
+    )
+    const options = deps.addUri.mock.calls[0]?.[1] as Record<string, unknown>
+    const header = options.header as string[]
+    expect(header).toEqual(
+      expect.arrayContaining([
+        'Referer: https://video.example/',
+        'Accept-Language: fr',
+      ])
+    )
+    // The adapter's own blank `Cookie:` only suppresses aria2's cookie jar.
+    expect(
+      header.filter((h) => /secret|token|cHJveHk|page-only/.test(h))
+    ).toEqual([])
+    const ctx = runBeforeCreateHttp.mock.calls[0]?.[0]
+    expect(ctx?.headers.map((h) => h.name.toLowerCase()).sort()).toEqual([
+      'accept-language',
+      'referer',
+    ])
+  })
+
   it('prefers a direct variant when FFmpeg is missing', async () => {
     const mediaResolve = fakeMediaResolve(
       mediaResolution(

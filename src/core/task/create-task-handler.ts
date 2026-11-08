@@ -21,6 +21,7 @@ import {
   type ResolvedMediaVariant,
   resolveMediaVariant,
 } from '@core/media-resolve/resolve-media-variant'
+import { STREAM_HEADER_ALLOWLIST } from '@core/media-resolve/site-resolution'
 import type { HookAuditLog } from '@core/plugin/hooks/audit-log'
 import type { HookOrchestrator } from '@core/plugin/hooks/hook-orchestrator'
 import type { StagedMetadataOp } from '@core/plugin/hooks/staged-effects'
@@ -208,7 +209,8 @@ export interface CreateTaskDeps {
    * name and continues down the HTTP path. A URL no resolver claims is
    * unchanged. A resolver that claims the URL and fails throws
    * MediaResolveError, so the page is never downloaded under the video's
-   * name. No cookies are passed: the desktop and Web paths have none.
+   * name. The resolver gets no cookies, and a direct rewrite keeps only the
+   * request's allowlisted stream headers (never Cookie or Authorization).
    */
   mediaResolve?: MediaResolveService
   /** The process media runtime; must be paired with `mediaResolve`. */
@@ -816,6 +818,11 @@ async function handleCreateTaskUnderAdmission(
         }
         mediaRewritten = true
         params.uris = outcome.uris
+        // The request's headers were meant for the page, not for whatever
+        // stream host the resolver picked: only the contract's allowlisted
+        // headers carry over, so a Cookie or Authorization typed for the
+        // page never reaches a CDN or its mirrors.
+        params.cookies = undefined
         const { userAgent, headers } = mergeStreamHeaders(
           outcome.headers,
           params.headers
@@ -1544,10 +1551,13 @@ function logMediaSelection(taskId: string, picked: ResolvedMediaVariant): void {
   )
 }
 
+const STREAM_HEADERS: ReadonlySet<string> = new Set(STREAM_HEADER_ALLOWLIST)
+
 /**
- * Stream headers under the request's own: a header the user supplied wins,
- * matched case-insensitively. User-Agent moves to the dedicated engine
- * option so the task does not send two.
+ * Stream headers under the request's own: an allowlisted header the user
+ * supplied wins, matched case-insensitively; every other user header is
+ * dropped. User-Agent moves to the dedicated engine option so the task does
+ * not send two.
  */
 function mergeStreamHeaders(
   stream: Record<string, string>,
@@ -1558,7 +1568,8 @@ function mergeStreamHeaders(
     merged.set(name.toLowerCase(), [name, value])
   }
   for (const [name, value] of Object.entries(user ?? {})) {
-    merged.set(name.toLowerCase(), [name, value])
+    const key = name.toLowerCase()
+    if (STREAM_HEADERS.has(key)) merged.set(key, [name, value])
   }
   const userAgent = merged.get('user-agent')?.[1]
   merged.delete('user-agent')
