@@ -1566,13 +1566,23 @@ function mergeStreamHeaders(
 
 /**
  * A pipeline that refuses a resolved variant fails the create with the
- * resolver's attribution. FFmpeg that vanished between selection and
- * dispatch is `ffmpeg-required`; other pipeline errors keep their message.
+ * resolver's attribution and a reason the user can read: FFmpeg that
+ * vanished between selection and dispatch, or a playlist the resolver
+ * offered that turns out encrypted or live. Other errors pass unchanged.
  */
 function mediaDispatchFailure(pluginId: string, error: unknown): unknown {
-  if (error instanceof BridgeReceiverError && error.code === 'unsupported-kind')
+  if (!(error instanceof BridgeReceiverError)) return error
+  if (error.code === 'unsupported-kind')
     return new MediaResolveError(pluginId, 'ffmpeg-required', error)
-  return error
+  const reason =
+    error.code === 'unsupported-encryption'
+      ? 'encrypted'
+      : error.code === 'unsupported-live'
+        ? 'live-unsupported'
+        : null
+  return reason
+    ? new MediaResolveError(pluginId, 'unavailable', error, reason)
+    : error
 }
 
 function safeHost(u: string): string {

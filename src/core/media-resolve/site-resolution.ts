@@ -47,22 +47,6 @@ const ALLOWED_STREAM_HEADERS: ReadonlySet<string> = new Set(
   STREAM_HEADER_ALLOWLIST
 )
 
-/** Unavailability reasons the host has localized text for. */
-export const KNOWN_UNAVAILABLE_REASONS = [
-  'login-required',
-  'premium-required',
-  'paid-content',
-  'preview-only',
-  'drm',
-  'encrypted',
-  'geo-restricted',
-  'rate-limited',
-  'not-found',
-  'removed',
-  'live-unsupported',
-  'unsupported',
-] as const
-
 const L = SITE_RESOLUTION_LIMITS
 
 const idSchema = z.string().min(1).max(L.idChars)

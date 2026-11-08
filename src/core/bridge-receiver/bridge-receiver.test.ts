@@ -818,6 +818,35 @@ describe('BridgeReceiver', () => {
       )
     })
 
+    it.each([
+      ['login-required', 'auth-expired', false],
+      ['drm', 'unsupported-encryption', false],
+      ['live-unsupported', 'unsupported-live', false],
+      ['removed', 'not-found', false],
+      ['rate-limited', 'transient-failure', true],
+      ['region-locked', 'unsupported-kind', false],
+    ] as const)(
+      'rejects unavailable media (%s) with its localized reason and code %s',
+      async (reason, code, retryable) => {
+        const { deps, receiver } = mediaDeps(
+          { kind: 'unavailable', reason },
+          { translate: (key: string) => `t:${key}` }
+        )
+        await expect(
+          receiver.handle(directParams, extCtx)
+        ).rejects.toMatchObject({
+          code: ErrorCodes.AdapterError,
+          message: expect.stringMatching(/^t:task\.add\.media\.unavailable\./),
+          data: {
+            appCode: 'media-resolve-failed',
+            retryable,
+            context: { failure: 'unavailable', reason, code },
+          },
+        })
+        expect(deps.createTask).not.toHaveBeenCalled()
+      }
+    )
+
     it('rejects FFmpeg-only variants without FFmpeg like any media submit', async () => {
       const { deps, receiver } = mediaDeps(
         mediaResolution(

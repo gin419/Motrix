@@ -3434,6 +3434,54 @@ describe('handleCreateTask site resolution seam', () => {
     expect(deps.addUri).not.toHaveBeenCalled()
   })
 
+  it('fails with the localized reason when the resolver reports the media unavailable', async () => {
+    const mediaResolve = fakeMediaResolve({
+      kind: 'unavailable',
+      reason: 'login-required',
+      message: 'members only',
+    })
+    const deps = makeDeps()
+    await expect(
+      handleCreateTask(pageRequest(), {
+        ...deps,
+        mediaResolve,
+        media: fakeMediaTarget(),
+      })
+    ).rejects.toMatchObject({
+      code: ErrorCode.MediaResolveFailed,
+      failure: 'unavailable',
+      reason: 'login-required',
+      message: 'task.add.media.unavailable.loginRequired',
+    })
+    expect(deps.addUri).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['unsupported-encryption', 'task.add.media.unavailable.protected'],
+    ['unsupported-live', 'task.add.media.unavailable.liveUnsupported'],
+  ] as const)(
+    'reports a playlist the pipeline refuses with %s as unavailable',
+    async (code, key) => {
+      const mediaResolve = fakeMediaResolve(
+        mediaResolution(
+          'Clip',
+          manifestVariant('hls', 'https://cdn.example/index.m3u8')
+        )
+      )
+      const media = fakeMediaTarget()
+      media.hlsDash.dispatch.mockRejectedValue(
+        new BridgeReceiverError(code, 'refused')
+      )
+      await expect(
+        handleCreateTask(pageRequest(), {
+          ...makeDeps(),
+          mediaResolve,
+          media,
+        })
+      ).rejects.toMatchObject({ failure: 'unavailable', message: key })
+    }
+  )
+
   it('falls through to the HTTP path when no resolve service is wired', async () => {
     const deps = makeDeps({ addUriGid: 'gid-fallback' })
     const result = await handleCreateTask(pageRequest(), deps)

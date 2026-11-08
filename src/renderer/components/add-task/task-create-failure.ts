@@ -5,7 +5,7 @@
 // a plugin-chain abort is not — it names an internal chain and a plugin id,
 // and the only useful action (disable that plugin) is nowhere in the text.
 
-import { MEDIA_RESOLVE_FAILED_KEY } from '@shared/errors'
+import { MEDIA_RESOLVE_MESSAGE_KEYS } from '@shared/errors'
 
 /** Strip the IPC envelope and error-class prefix from a rejection. */
 export function taskCreateFailureReason(error: unknown): string | null {
@@ -19,12 +19,11 @@ export function taskCreateFailureReason(error: unknown): string | null {
 
 /**
  * i18n keys of CreateTask rejections the host raises only after deciding not
- * to create the task. Unlike a lost reply, such a rejection settles the
- * request: nothing was created, so there is nothing to confirm on retry.
+ * to create the task — every site-resolution failure, each explaining why.
+ * Unlike a lost reply, such a rejection settles the request: nothing was
+ * created, so there is nothing to confirm on retry.
  */
-const DEFINITE_REJECTION_KEYS: ReadonlySet<string> = new Set([
-  MEDIA_RESOLVE_FAILED_KEY,
-])
+const DEFINITE_REJECTION_KEYS = MEDIA_RESOLVE_MESSAGE_KEYS
 
 export function isDefiniteRejectionKey(
   reason: string | null

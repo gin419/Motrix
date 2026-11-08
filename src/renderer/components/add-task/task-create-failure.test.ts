@@ -36,6 +36,25 @@ describe('definiteTaskCreateRejection', () => {
     ).toBe('task.add.mediaResolveFailed')
   })
 
+  it.each([
+    'task.add.media.unavailable.loginRequired',
+    'task.add.media.failure.timeout',
+    'settings.integration.media.ffmpegRequired',
+  ])('recognizes the reasoned media rejection %s', (key) => {
+    expect(
+      definiteTaskCreateRejection(
+        new Error(
+          `Error invoking remote method 'command:createTask': Error: ${key}`
+        )
+      )
+    ).toBe(key)
+    expect(
+      definiteTaskCreateRejection(
+        new Error(`rpc failed 500: {"error":"${key}"}`)
+      )
+    ).toBe(key)
+  })
+
   it('leaves lost replies and other failures unconfirmed', () => {
     expect(
       definiteTaskCreateRejection(new TypeError('Failed to fetch'))

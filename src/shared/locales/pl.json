@@ -1068,6 +1068,23 @@
       "createFailed": "Nie udało się utworzyć zadania pobierania.",
       "createFailedWithReason": "Nie udało się utworzyć zadania pobierania: {{reason}}",
       "mediaResolveFailed": "Wtyczka rozpoznawania witryny nie mogła odczytać tej strony, więc nie została ona pobrana. Spróbuj ponownie później lub zaktualizuj wtyczkę.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Ten materiał wymaga zalogowania. Zaloguj się w ustawieniach wtyczki rozpoznawania witryny i spróbuj ponownie.",
+          "paidContent": "Ten materiał wymaga subskrypcji lub zakupu w serwisie.",
+          "previewOnly": "Dostępny jest tylko podgląd tego materiału.",
+          "protected": "Ten materiał jest chroniony przez DRM lub szyfrowanie i nie można go pobrać.",
+          "geoRestricted": "Ten materiał jest niedostępny w Twoim regionie.",
+          "rateLimited": "Witryna ogranicza liczbę żądań. Spróbuj ponownie później.",
+          "notFound": "Ten materiał został usunięty lub już nie istnieje.",
+          "liveUnsupported": "Transmisji na żywo nie można pobrać.",
+          "unsupported": "Wtyczka rozpoznawania witryny zgłasza, że tego materiału nie można pobrać."
+        },
+        "failure": {
+          "timeout": "Wtyczka rozpoznawania witryny nie odpowiedziała na czas. Spróbuj ponownie później.",
+          "noPlayableVariant": "Wtyczka rozpoznawania witryny nie znalazła formatu tego materiału, który można pobrać."
+        }
+      },
       "createFailedByPlugin": "Nie udało się utworzyć zadania: wtyczka „{{pluginId}}” je zatrzymała ({{detail}}). Wyłącz tę wtyczkę w Ustawienia → Wtyczki i spróbuj ponownie.",
       "createFailedPathTooLong": "Nie udało się utworzyć zadania: liczba znaków w ścieżce docelowej ({{length}}) przekracza limit w systemie Windows ({{limit}}). Wybierz krótszą ścieżkę folderu zapisu lub nazwę pliku.",
       "parseFailed": "Nie udało się odczytać pliku torrent.",

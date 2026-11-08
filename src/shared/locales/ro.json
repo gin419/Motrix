@@ -2854,6 +2854,23 @@
       "createFailedPathTooLong": "Sarcina nu a putut fi creată: calea de destinație are {{length}} de caractere, depășind limita Windows de {{limit}}. Alege un dosar de salvare sau un nume de fișier mai scurt.",
       "createFailedWithReason": "Sarcina de descărcare nu a putut fi creată: {{reason}}",
       "mediaResolveFailed": "Modulul de rezolvare a site-ului nu a putut citi această pagină, așa că nu a fost descărcată. Încearcă din nou mai târziu sau actualizează modulul.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Acest conținut necesită autentificare. Autentifică-te din setările modulului de rezolvare a site-ului, apoi încearcă din nou.",
+          "paidContent": "Acest conținut necesită un abonament sau o achiziție pe site.",
+          "previewOnly": "Pentru acest conținut este disponibilă doar o previzualizare.",
+          "protected": "Acest conținut este protejat prin DRM sau criptare și nu poate fi descărcat.",
+          "geoRestricted": "Acest conținut nu este disponibil în regiunea ta.",
+          "rateLimited": "Site-ul limitează cererile. Încearcă din nou mai târziu.",
+          "notFound": "Acest conținut a fost eliminat sau nu mai există.",
+          "liveUnsupported": "Transmisiunile live nu pot fi descărcate.",
+          "unsupported": "Modulul de rezolvare a site-ului raportează că acest conținut nu poate fi descărcat."
+        },
+        "failure": {
+          "timeout": "Modulul de rezolvare a site-ului nu a răspuns la timp. Încearcă din nou mai târziu.",
+          "noPlayableVariant": "Modulul de rezolvare a site-ului nu a găsit niciun format descărcabil pentru acest conținut."
+        }
+      },
       "created": "Sarcină adăugată",
       "createdCopy": "Copie separată adăugată",
       "createdPartial": "Adăugate: {{ok}} · Eșuate: {{failed}}",

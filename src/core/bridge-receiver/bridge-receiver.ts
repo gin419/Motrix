@@ -75,6 +75,12 @@ export interface BridgeReceiverDeps {
   bridgeBus: BridgeEventBus
   localize: (code: BridgeErrorCode) => string
   /**
+   * Translate an i18n key, for the reason a site resolution failed. Absent,
+   * the key itself is the message (as `localize` returns codes on hosts
+   * without a translator).
+   */
+  translate?: (key: string) => string
+  /**
    * Optional site resolution for direct submits. A resolved page is routed by
    * its selected variant: a direct variant stays a direct download of the
    * stream, mux/HLS/DASH go to the media runtime. A URL no resolver claims
@@ -94,6 +100,29 @@ export interface BridgeReceiverDeps {
    * (tests, Node shell back-compat).
    */
   waitForReady?: () => Promise<void>
+}
+
+/** The receiver error code closest to a site resolution failure. */
+function mediaFailureCode(error: MediaResolveError): BridgeErrorCode {
+  if (error.failure === 'command-failed' || error.failure === 'timeout')
+    return 'transient-failure'
+  if (error.failure !== 'unavailable') return 'unsupported-kind'
+  switch (error.reason) {
+    case 'drm':
+    case 'encrypted':
+      return 'unsupported-encryption'
+    case 'live-unsupported':
+      return 'unsupported-live'
+    case 'not-found':
+    case 'removed':
+      return 'not-found'
+    case 'rate-limited':
+      return 'transient-failure'
+    case 'login-required':
+      return 'auth-expired'
+    default:
+      return 'unsupported-kind'
+  }
 }
 
 /**
@@ -296,7 +325,12 @@ export class BridgeReceiver {
     return this.direct.dispatch(resolved)
   }
 
-  /** A resolver claimed the URL and failed: never download the page itself. */
+  /**
+   * A resolver claimed the URL and failed: never download the page itself.
+   * The rejection carries the localized reason as its message and the
+   * closest receiver error code, so a client can tell "sign in" from
+   * "protected" from "try later" without a protocol change.
+   */
   private mediaResolveFailure(error: unknown): unknown {
     if (!(error instanceof MediaResolveError)) return error
     // Only FFmpeg-dependent variants: the same rejection a media submit gets
@@ -307,14 +341,19 @@ export class BridgeReceiver {
         'ffmpeg is unavailable; configure it in Settings and retry'
       )
     }
+    const code = mediaFailureCode(error)
     return makeMdxpError(
       ErrorCodes.AdapterError,
-      'Media page could not be resolved',
+      this.deps.translate?.(error.message) ?? error.message,
       {
         appCode: 'media-resolve-failed',
-        retryable:
-          error.failure === 'command-failed' || error.failure === 'timeout',
-        context: { pluginId: error.pluginId, failure: error.failure },
+        retryable: code === 'transient-failure',
+        context: {
+          pluginId: error.pluginId,
+          failure: error.failure,
+          code,
+          ...(error.reason ? { reason: error.reason } : {}),
+        },
       }
     )
   }

@@ -1044,6 +1044,23 @@
       "createFailed": "Failed to create download task.",
       "createFailedWithReason": "Failed to create download task: {{reason}}",
       "mediaResolveFailed": "The site resolver plugin couldn’t read this page, so it wasn’t downloaded. Try again later or update the plugin.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "This media requires signing in. Sign in through the site resolver plugin’s settings, then try again.",
+          "paidContent": "This media requires a membership or purchase on its site.",
+          "previewOnly": "Only a preview of this media is available.",
+          "protected": "This media is protected by DRM or encryption and can’t be downloaded.",
+          "geoRestricted": "This media isn’t available in your region.",
+          "rateLimited": "The site is limiting requests. Try again later.",
+          "notFound": "This media was removed or no longer exists.",
+          "liveUnsupported": "Live streams can’t be downloaded.",
+          "unsupported": "The site resolver plugin reports that this media can’t be downloaded."
+        },
+        "failure": {
+          "timeout": "The site resolver plugin didn’t respond in time. Try again later.",
+          "noPlayableVariant": "The site resolver plugin found no downloadable format for this media."
+        }
+      },
       "createFailedByPlugin": "Couldn’t create the task: the plugin “{{pluginId}}” stopped it ({{detail}}). Disable that plugin under Settings → Plugins, then try again.",
       "createFailedPathTooLong": "Couldn’t create the task: the destination path is {{length}} characters, over the Windows limit of {{limit}}. Choose a shorter save folder or file name.",
       "parseFailed": "Failed to parse torrent file.",

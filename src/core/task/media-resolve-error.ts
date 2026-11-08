@@ -1,4 +1,4 @@
-import { AppError, ErrorCode, MEDIA_RESOLVE_FAILED_KEY } from '@shared/errors'
+import { AppError, ErrorCode, mediaResolveMessageKey } from '@shared/errors'
 
 /**
  * - `command-failed`: activation or the resolve command threw.
@@ -11,7 +11,9 @@ import { AppError, ErrorCode, MEDIA_RESOLVE_FAILED_KEY } from '@shared/errors'
  *   by the consumer.
  * - `ffmpeg-required`: the only usable variants need FFmpeg, which is absent.
  *
- * Every failure currently shares one user-facing message key.
+ * The message is the i18n key that explains the failure: one per known
+ * unavailability reason, one per host-side failure, and a shared key for a
+ * resolver that failed or answered nonsense.
  */
 export type MediaResolveFailure =
   | 'command-failed'
@@ -34,6 +36,10 @@ export class MediaResolveError extends AppError {
     cause?: unknown,
     public readonly reason?: string
   ) {
-    super(ErrorCode.MediaResolveFailed, MEDIA_RESOLVE_FAILED_KEY, cause)
+    super(
+      ErrorCode.MediaResolveFailed,
+      mediaResolveMessageKey(failure, reason),
+      cause
+    )
   }
 }

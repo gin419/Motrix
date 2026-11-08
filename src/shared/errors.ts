@@ -91,10 +91,65 @@ export enum ErrorCode {
 
 /**
  * i18n key carried as the message of an `ErrorCode.MediaResolveFailed`
- * AppError. Electron flattens an AppError to its message across IPC, so the
- * renderer receives this key verbatim and translates it.
+ * AppError when the resolver itself failed. Electron flattens an AppError to
+ * its message across IPC, so the renderer receives the key verbatim and
+ * translates it; {@link mediaResolveMessageKey} picks the key per failure.
  */
 export const MEDIA_RESOLVE_FAILED_KEY = 'task.add.mediaResolveFailed'
+
+/**
+ * Reasons a site resolver may give for unavailable media, each mapped to the
+ * `task.add.media.unavailable.*` leaf that explains it. Any other reason
+ * token is shown with the `unsupported` text.
+ */
+const MEDIA_UNAVAILABLE_TEXT = {
+  'login-required': 'loginRequired',
+  'premium-required': 'paidContent',
+  'paid-content': 'paidContent',
+  'preview-only': 'previewOnly',
+  drm: 'protected',
+  encrypted: 'protected',
+  'geo-restricted': 'geoRestricted',
+  'rate-limited': 'rateLimited',
+  'not-found': 'notFound',
+  removed: 'notFound',
+  'live-unsupported': 'liveUnsupported',
+  unsupported: 'unsupported',
+} as const
+
+export type MediaUnavailableReason = keyof typeof MEDIA_UNAVAILABLE_TEXT
+
+export const MEDIA_UNAVAILABLE_REASONS = Object.keys(
+  MEDIA_UNAVAILABLE_TEXT
+) as MediaUnavailableReason[]
+
+const MEDIA_FAILURE_KEYS: Readonly<Record<string, string>> = {
+  timeout: 'task.add.media.failure.timeout',
+  'no-playable-variant': 'task.add.media.failure.noPlayableVariant',
+  'ffmpeg-required': 'settings.integration.media.ffmpegRequired',
+}
+
+/** The i18n key that explains a media resolve failure (and its reason). */
+export function mediaResolveMessageKey(
+  failure: string,
+  reason?: string
+): string {
+  if (failure === 'unavailable') {
+    const leaf =
+      MEDIA_UNAVAILABLE_TEXT[reason as MediaUnavailableReason] ?? 'unsupported'
+    return `task.add.media.unavailable.${leaf}`
+  }
+  return MEDIA_FAILURE_KEYS[failure] ?? MEDIA_RESOLVE_FAILED_KEY
+}
+
+/** Every key {@link mediaResolveMessageKey} can return. */
+export const MEDIA_RESOLVE_MESSAGE_KEYS: ReadonlySet<string> = new Set([
+  MEDIA_RESOLVE_FAILED_KEY,
+  ...Object.values(MEDIA_FAILURE_KEYS),
+  ...Object.values(MEDIA_UNAVAILABLE_TEXT).map(
+    (leaf) => `task.add.media.unavailable.${leaf}`
+  ),
+])
 
 export enum DownloadErrorCode {
   Unknown = 'DL_UNKNOWN',

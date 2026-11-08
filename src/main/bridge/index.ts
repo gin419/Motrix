@@ -443,6 +443,7 @@ export async function bootstrapBridge(args: {
       eventBus: args.eventBus,
       bridgeBus: bus,
       localize,
+      translate: (key) => t(key),
       // Extension submit path; desktop Add-Task uses the same process-scoped
       // service.
       mediaResolve: args.mediaResolve,
