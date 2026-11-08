@@ -2901,7 +2901,8 @@
           "declined": "Cap connector de resolució de llocs gestiona ja aquest enllaç. Tanca això i tria Baixa per afegir-lo com un enllaç normal.",
           "busy": "Encara s’estan llegint altres pàgines. Torna-ho a provar d’aquí a un moment.",
           "cancelled": "S’ha cancel·lat la lectura de la pàgina.",
-          "error": "No s’ha pogut llegir la pàgina. Torna-ho a provar."
+          "error": "No s’ha pogut llegir la pàgina. Torna-ho a provar.",
+          "invalidOptions": "Algunes opcions de baixada no són vàlides. Tanca això, corregeix-les i torna-ho a provar."
         }
       },
       "created": "S'ha afegit la tasca",

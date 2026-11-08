@@ -2881,7 +2881,8 @@
           "declined": "Ingen nettstedsløser-tillegg håndterer denne lenken lenger. Lukk dette og velg Last ned for å legge den til som en vanlig lenke.",
           "busy": "Andre sider leses fortsatt. Prøv igjen om et øyeblikk.",
           "cancelled": "Lesingen av siden ble avbrutt.",
-          "error": "Kunne ikke lese siden. Prøv igjen."
+          "error": "Kunne ikke lese siden. Prøv igjen.",
+          "invalidOptions": "Noen nedlastingsvalg er ugyldige. Lukk dette, rett dem og prøv igjen."
         }
       },
       "created": "Oppgaven er lagt til",

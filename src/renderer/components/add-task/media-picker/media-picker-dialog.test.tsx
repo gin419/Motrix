@@ -134,7 +134,7 @@ function renderDialog(
     <PlatformServicesProvider services={services}>
       <SessionHost
         target={next}
-        requestBase={() => base}
+        requestBase={() => ({ ok: true, request: base })}
         onClose={onClose}
         onCreated={onCreated}
         {...props}
@@ -614,7 +614,12 @@ describe('MediaPickerDialog', () => {
 
   it('asks for a save folder before creating anything', async () => {
     resolveWith({ status: 'ok', preview: preview() })
-    renderDialog(undefined, { requestBase: () => null })
+    renderDialog(undefined, {
+      requestBase: () => ({
+        ok: false,
+        message: { key: 'task.add.errors.saveDirRequired' },
+      }),
+    })
     await screen.findByText('Sample Series')
     await userEvent.click(screen.getByRole('button', { name: 'Download (1)' }))
     expect(screen.getByText('Save directory is required')).toBeInTheDocument()

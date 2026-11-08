@@ -1103,7 +1103,8 @@
           "declined": "Nessun plugin di risoluzione dei siti gestisce più questo link. Chiudi e scegli Scarica per aggiungerlo come link normale.",
           "busy": "Altre pagine sono ancora in lettura. Riprova tra un momento.",
           "cancelled": "La lettura della pagina è stata annullata.",
-          "error": "Impossibile leggere la pagina. Riprova."
+          "error": "Impossibile leggere la pagina. Riprova.",
+          "invalidOptions": "Alcune opzioni di download non sono valide. Chiudi, correggile e riprova."
         }
       },
       "createFailedByPlugin": "Impossibile creare l’attività: il plugin “{{pluginId}}” l’ha bloccata ({{detail}}). Disattiva il plugin in Impostazioni → Plugin, quindi riprova.",

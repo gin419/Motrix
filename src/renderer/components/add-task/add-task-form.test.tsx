@@ -1,5 +1,12 @@
 import { invalidateTaskList } from '@renderer/hooks/use-task-list'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { version as uuidVersion } from 'uuid'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -739,6 +746,51 @@ describe('AddTaskForm', () => {
         'true'
       )
     })
+
+    it.each([
+      [
+        'an unnamed header',
+        async () => {
+          await userEvent.click(
+            screen.getByRole('button', { name: 'Add header' })
+          )
+          await userEvent.type(screen.getByLabelText('Header value'), 'v')
+        },
+        'Add a name for each header with a value.',
+      ],
+      [
+        'too many connections',
+        async () => {
+          await userEvent.type(screen.getByLabelText('Connections'), '200')
+        },
+        'Some download options are invalid. Close this, correct them, then try again.',
+      ],
+    ])(
+      'checks the form options before adding picked parts: %s',
+      async (_, fillInvalid, message) => {
+        serveMedia(() => ({ gid: 'gid-1', taskId: 'task-1' }))
+        renderForm({
+          defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+        })
+        await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+        await fillInvalid()
+        await userEvent.click(
+          await screen.findByRole('button', {
+            name: 'Example Resolver: Choose parts & quality',
+          })
+        )
+        await userEvent.click(
+          await screen.findByRole('button', { name: 'Download (1)' })
+        )
+        expect(
+          await within(screen.getByRole('dialog')).findByText(message)
+        ).toBeInTheDocument()
+        expect(invokeMock).not.toHaveBeenCalledWith(
+          Commands.CreateTask,
+          expect.anything()
+        )
+      }
+    )
 
     it('offers no picker when re-downloading a task', async () => {
       serveMedia(() => ({ gid: 'gid-1' }))

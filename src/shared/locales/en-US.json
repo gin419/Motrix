@@ -1091,7 +1091,8 @@
           "declined": "No site resolver plugin handles this link anymore. Close this and choose Download to add it as a regular link.",
           "busy": "Other pages are still being read. Try again in a moment.",
           "cancelled": "Reading the page was cancelled.",
-          "error": "Couldn’t read the page. Try again."
+          "error": "Couldn’t read the page. Try again.",
+          "invalidOptions": "Some download options are invalid. Close this, correct them, then try again."
         }
       },
       "createFailedByPlugin": "Couldn’t create the task: the plugin “{{pluginId}}” stopped it ({{detail}}). Disable that plugin under Settings → Plugins, then try again.",

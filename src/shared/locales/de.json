@@ -1091,7 +1091,8 @@
           "declined": "Kein Website-Resolver-Plugin verarbeitet diesen Link mehr. Schließe dies und wähle „Herunterladen“, um ihn als normalen Link hinzuzufügen.",
           "busy": "Andere Seiten werden noch gelesen. Versuche es gleich noch einmal.",
           "cancelled": "Das Lesen der Seite wurde abgebrochen.",
-          "error": "Die Seite konnte nicht gelesen werden. Versuche es erneut."
+          "error": "Die Seite konnte nicht gelesen werden. Versuche es erneut.",
+          "invalidOptions": "Einige Download-Optionen sind ungültig. Schließe dies, korrigiere sie und versuche es erneut."
         }
       },
       "createFailedByPlugin": "Die Aufgabe konnte nicht erstellt werden: Das Plugin „{{pluginId}}“ hat sie gestoppt ({{detail}}). Deaktivieren Sie dieses Plugin unter Einstellungen → Plugins und versuchen Sie es erneut.",

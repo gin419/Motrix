@@ -2901,7 +2901,8 @@
           "declined": "Niciun plugin de rezolvare a site-urilor nu mai gestionează acest link. Închide fereastra și alege Descarcă pentru a-l adăuga ca link obișnuit.",
           "busy": "Alte pagini sunt încă în curs de citire. Încearcă din nou peste câteva momente.",
           "cancelled": "Citirea paginii a fost anulată.",
-          "error": "Pagina nu a putut fi citită. Încearcă din nou."
+          "error": "Pagina nu a putut fi citită. Încearcă din nou.",
+          "invalidOptions": "Unele opțiuni de descărcare nu sunt valide. Închide fereastra, corectează-le și încearcă din nou."
         }
       },
       "created": "Sarcină adăugată",

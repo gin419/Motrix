@@ -2901,7 +2901,8 @@
           "declined": "Aucun plugin de résolution de site ne gère plus ce lien. Fermez cette fenêtre et choisissez Télécharger pour l’ajouter comme lien ordinaire.",
           "busy": "D’autres pages sont encore en cours de lecture. Réessayez dans un instant.",
           "cancelled": "La lecture de la page a été annulée.",
-          "error": "Impossible de lire la page. Réessayez."
+          "error": "Impossible de lire la page. Réessayez.",
+          "invalidOptions": "Certaines options de téléchargement ne sont pas valides. Fermez cette fenêtre, corrigez-les, puis réessayez."
         }
       },
       "created": "Tâche ajoutée",

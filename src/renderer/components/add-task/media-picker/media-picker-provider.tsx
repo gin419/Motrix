@@ -1,5 +1,6 @@
 import {
   type AddTaskFormValues,
+  addTaskFormSchema,
   formValuesToTaskCreateRequest,
 } from '@shared/schemas/add-task'
 import {
@@ -14,12 +15,12 @@ import { useFormContext, useWatch } from 'react-hook-form'
 import { parseUrlLines } from '../url-interpreters/multiline-url'
 import {
   EMPTY_PICK_SESSION,
-  type HttpTaskCreateRequest,
   type MediaPickerCreated,
   MediaPickerDialog,
   type MediaPickerTarget,
   type MediaPickSession,
   type MediaPickSessionUpdate,
+  type MediaRequestBase,
 } from './media-picker-dialog'
 import {
   type MediaLineMatch,
@@ -87,16 +88,39 @@ export function MediaPickerProvider({
   )
 
   const requestBase = useCallback(
-    (url: string): HttpTaskCreateRequest | null => {
+    (url: string): MediaRequestBase => {
       const values = form.getValues()
-      if (values.tab !== 'links' || !values.saveDir?.trim()) return null
+      if (values.tab === 'links' && !values.saveDir?.trim())
+        return {
+          ok: false,
+          message: { key: 'task.add.errors.saveDirRequired' },
+        }
+      // The same checks as a plain Download, which also mark the fields.
+      const parsed = addTaskFormSchema.safeParse(values)
+      if (!parsed.success || parsed.data.tab !== 'links') {
+        void form.trigger()
+        const message = parsed.error?.issues[0]?.message ?? ''
+        return {
+          ok: false,
+          message: {
+            key: message.startsWith('task.add.errors.')
+              ? message
+              : 'task.add.media.picker.invalidOptions',
+          },
+        }
+      }
       const request = formValuesToTaskCreateRequest({
-        ...values,
+        ...parsed.data,
         urls: url,
         // Picked parts get names planned from the resolution.
         filename: undefined,
       })
-      return request.type === 'http' ? request : null
+      return request.type === 'http'
+        ? { ok: true, request }
+        : {
+            ok: false,
+            message: { key: 'task.add.media.picker.invalidOptions' },
+          }
     },
     [form]
   )

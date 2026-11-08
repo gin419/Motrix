@@ -2881,7 +2881,8 @@
           "declined": "Geen siteresolver-plug-in verwerkt deze link nog. Sluit dit en kies Downloaden om hem als gewone link toe te voegen.",
           "busy": "Er worden nog andere pagina’s gelezen. Probeer het zo opnieuw.",
           "cancelled": "Het lezen van de pagina is geannuleerd.",
-          "error": "Kan de pagina niet lezen. Probeer het opnieuw."
+          "error": "Kan de pagina niet lezen. Probeer het opnieuw.",
+          "invalidOptions": "Sommige downloadopties zijn ongeldig. Sluit dit, corrigeer ze en probeer het opnieuw."
         }
       },
       "created": "Taak toegevoegd",

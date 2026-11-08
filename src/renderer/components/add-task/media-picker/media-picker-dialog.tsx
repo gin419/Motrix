@@ -49,6 +49,11 @@ export interface MediaPickerTarget {
   pluginName: string
 }
 
+/** The form's request fields for a page, or why the form can't send one. */
+export type MediaRequestBase =
+  | { ok: true; request: HttpTaskCreateRequest }
+  | { ok: false; message: MediaText }
+
 export interface MediaPickerCreated {
   url: string
   firstTaskId: string
@@ -87,10 +92,10 @@ interface MediaPickerDialogProps {
   session: MediaPickSession
   onSessionChange: (url: string, update: MediaPickSessionUpdate) => void
   /**
-   * The form's request fields (save folder, headers, proxy) for this page,
-   * or null when no save folder is chosen.
+   * The form's validated request fields (save folder, headers, proxy) for
+   * this page.
    */
-  requestBase: (url: string) => HttpTaskCreateRequest | null
+  requestBase: (url: string) => MediaRequestBase
   /** Closed with nothing added. */
   onClose: () => void
   /**
@@ -181,12 +186,12 @@ export function MediaPickerDialog({
   const downloadPageAsFile = useCallback(async () => {
     if (url === null) return
     const base = requestBase(url)
-    if (!base) {
-      setPageFileError(t('task.add.errors.saveDirRequired'))
+    if (!base.ok) {
+      setPageFileError(t(base.message.key, base.message.values))
       return
     }
     const request: HttpTaskCreateRequest = session.pageFile ?? {
-      ...base,
+      ...base.request,
       uris: [url],
       requestId: uuidv7(),
       mediaResolve: 'skip',
@@ -434,7 +439,7 @@ function ReadyView({
   onSessionChange: (update: MediaPickSessionUpdate) => void
   creating: boolean
   setCreating: (creating: boolean) => void
-  requestBase: (url: string) => HttpTaskCreateRequest | null
+  requestBase: (url: string) => MediaRequestBase
   loadEntries: (preview: MediaPreview, entryIds: string[]) => Promise<void>
   onPartCreated: (taskId: string) => void
   /** Leave the picker, keeping what was added. */
@@ -493,8 +498,8 @@ function ReadyView({
 
   const create = async () => {
     const base = requestBase(url)
-    if (!base) {
-      setNotice(t('task.add.errors.saveDirRequired'))
+    if (!base.ok) {
+      setNotice(t(base.message.key, base.message.values))
       return
     }
     setNotice(null)
@@ -509,7 +514,7 @@ function ReadyView({
         const request: HttpTaskCreateRequest = unconfirmed.current.get(
           entry.id
         ) ?? {
-          ...base,
+          ...base.request,
           uris: [url],
           requestId: uuidv7(),
           mediaPick: buildMediaPick(

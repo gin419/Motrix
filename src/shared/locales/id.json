@@ -1079,7 +1079,8 @@
           "declined": "Tidak ada lagi plugin pemecah situs yang menangani tautan ini. Tutup ini dan pilih Unduh untuk menambahkannya sebagai tautan biasa.",
           "busy": "Halaman lain masih dibaca. Coba lagi sebentar lagi.",
           "cancelled": "Pembacaan halaman dibatalkan.",
-          "error": "Tidak dapat membaca halaman. Coba lagi."
+          "error": "Tidak dapat membaca halaman. Coba lagi.",
+          "invalidOptions": "Beberapa opsi unduhan tidak valid. Tutup ini, perbaiki opsinya, lalu coba lagi."
         }
       },
       "createFailedByPlugin": "Tugas tidak dapat dibuat: plugin “{{pluginId}}” menghentikannya ({{detail}}). Nonaktifkan plugin tersebut di Pengaturan → Plugin, lalu coba lagi.",

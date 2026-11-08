@@ -1091,7 +1091,8 @@
           "declined": "Már egyetlen oldalfeloldó bővítmény sem kezeli ezt a hivatkozást. Zárja be ezt, és válassza a Letöltés gombot, hogy normál hivatkozásként adja hozzá.",
           "busy": "Más oldalak olvasása még folyamatban van. Próbálja újra egy pillanat múlva.",
           "cancelled": "Az oldal olvasása megszakítva.",
-          "error": "Nem sikerült beolvasni az oldalt. Próbálja újra."
+          "error": "Nem sikerült beolvasni az oldalt. Próbálja újra.",
+          "invalidOptions": "Néhány letöltési beállítás érvénytelen. Zárja be ezt, javítsa ki őket, majd próbálja újra."
         }
       },
       "createFailedByPlugin": "Nem sikerült létrehozni a feladatot: a(z) „{{pluginId}}” bővítmény leállította ({{detail}}). Tiltsd le ezt a bővítményt a Beállítások → Bővítmények alatt, majd próbáld újra.",

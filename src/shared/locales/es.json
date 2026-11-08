@@ -1103,7 +1103,8 @@
           "declined": "Ningún plugin de resolución de sitios gestiona ya este enlace. Cierra esto y elige Descargar para añadirlo como un enlace normal.",
           "busy": "Aún se están leyendo otras páginas. Inténtalo de nuevo en un momento.",
           "cancelled": "Se canceló la lectura de la página.",
-          "error": "No se pudo leer la página. Inténtalo de nuevo."
+          "error": "No se pudo leer la página. Inténtalo de nuevo.",
+          "invalidOptions": "Algunas opciones de descarga no son válidas. Cierra esto, corrígelas y vuelve a intentarlo."
         }
       },
       "createFailedByPlugin": "No se pudo crear la tarea: el plugin «{{pluginId}}» la detuvo ({{detail}}). Desactiva ese plugin en Ajustes → Plugins y vuelve a intentarlo.",
