@@ -67,8 +67,26 @@ const urlSchema = z.string().min(1).max(L.urlChars)
 const reasonSchema = z.string().regex(/^[a-z][a-z0-9-]{0,47}$/)
 const messageSchema = z.string().max(L.messageChars)
 
+// RFC 9110 field-name token. Values may carry HTAB but no other C0 control or
+// DEL: aria2 stores its `header` option newline-delimited, so a CR/LF inside
+// one allowlisted value would smuggle extra request headers past the allowlist.
+const headerNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/)
+// biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting header-splitting controls is the point.
+const HEADER_VALUE_CONTROL_RE = /[\u0000-\u0008\u000a-\u001f\u007f]/
+const headerValueSchema = z
+  .string()
+  .max(L.headerValueChars)
+  .refine(
+    (value) => !HEADER_VALUE_CONTROL_RE.test(value),
+    'control character in header value'
+  )
+
 const headersSchema = z
-  .record(z.string().min(1).max(64), z.string().max(L.headerValueChars))
+  .record(headerNameSchema, headerValueSchema)
   .refine((headers) => Object.keys(headers).length <= L.headersPerStream, {
     message: `at most ${L.headersPerStream} headers`,
   })
@@ -261,8 +279,7 @@ export function parseSiteResolveResult(raw: unknown): SiteResolveParse {
     return {
       kind: 'invalid',
       issues: parsed.error.issues.map(
-        (issue) =>
-          `${issue.path.length > 0 ? issue.path.join('.') : '(root)'}: ${issue.code}`
+        (issue) => `${formatIssuePath(issue.path)}: ${issue.code}`
       ),
     }
   }
@@ -281,6 +298,15 @@ export function parseSiteResolveResult(raw: unknown): SiteResolveParse {
   const issues = admitResolution(resolution)
   if (issues.length > 0) return { kind: 'invalid', issues }
   return { kind: 'media', resolution }
+}
+
+// Header names are record keys chosen by the plugin, so a path stops at
+// `headers`: an issue line must never echo text from the result.
+function formatIssuePath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) return '(root)'
+  const headers = path.indexOf('headers')
+  const kept = headers === -1 ? path : path.slice(0, headers + 1)
+  return kept.map(String).join('.')
 }
 
 /** An entry whose variants the resolver left out, to be fetched by entry id. */

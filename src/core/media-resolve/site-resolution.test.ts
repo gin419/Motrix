@@ -185,6 +185,84 @@ describe('parseSiteResolveResult', () => {
     )
   })
 
+  it.each([
+    ['LF', 'https://media.test/\nCookie: sid=secret'],
+    ['CRLF', 'https://media.test/\r\nAuthorization: Bearer secret'],
+    ['NUL', 'https://media.test/\u0000secret'],
+    ['DEL', 'https://media.test/\u007fsecret'],
+  ])('rejects a %s inside an allowlisted header value', (_name, value) => {
+    const versioned = expectInvalid(
+      parseSiteResolveResult(
+        withVariant({
+          id: 'a',
+          label: 'A',
+          container: 'mp4',
+          source: {
+            kind: 'direct',
+            stream: { url: VIDEO, headers: { Referer: value } },
+          },
+        })
+      )
+    )
+    expect(versioned.join(' ')).toContain('headers')
+    expect(versioned.join(' ')).not.toContain('secret')
+    const legacy = expectInvalid(
+      parseSiteResolveResult({
+        kind: 'mux',
+        video: { url: VIDEO, headers: { 'User-Agent': value } },
+        audio: { url: AUDIO },
+      })
+    )
+    expect(legacy.join(' ')).not.toContain('secret')
+  })
+
+  it('accepts a tab inside a header value', () => {
+    const result = parseSiteResolveResult(
+      withVariant({
+        id: 'a',
+        label: 'A',
+        container: 'mp4',
+        source: {
+          kind: 'direct',
+          stream: { url: VIDEO, headers: { 'User-Agent': 'Agent/1.0\t(x)' } },
+        },
+      })
+    )
+    expect(result.kind).toBe('media')
+  })
+
+  it.each([
+    'Referer: secret',
+    'Referer\nsecret',
+    'Ref secret',
+    'Referer\u0000secret',
+  ])('rejects a header name that is not an HTTP token (%j)', (name) => {
+    const versioned = expectInvalid(
+      parseSiteResolveResult(
+        withVariant({
+          id: 'a',
+          label: 'A',
+          container: 'mp4',
+          source: {
+            kind: 'direct',
+            stream: { url: VIDEO, headers: { [name]: 'https://media.test/' } },
+          },
+        })
+      )
+    )
+    expect(versioned).toEqual([
+      'entries.0.variants.0.source.stream.headers: invalid_key',
+    ])
+    const legacy = expectInvalid(
+      parseSiteResolveResult({
+        kind: 'mux',
+        video: { url: VIDEO, headers: { [name]: 'https://media.test/' } },
+        audio: { url: AUDIO },
+      })
+    )
+    expect(legacy.join(' ')).not.toContain('secret')
+  })
+
   it('matches allowlisted header names case-insensitively', () => {
     const result = parseSiteResolveResult(
       withVariant({
