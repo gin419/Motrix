@@ -71,6 +71,8 @@ import {
   rememberPendingCreate,
 } from './pending-create-inputs'
 import {
+  definiteTaskCreateRejection,
+  isDefiniteRejectionKey,
   parsePathTooLong,
   parsePluginChainAbort,
   taskCreateFailureReason,
@@ -122,10 +124,11 @@ function notifyTaskCreateFailure(
   reason: string | null
 ): void {
   if (
-    reason &&
-    /^task\.(storage\.(incomplete|resumeFailed|errors\.(unavailable|busy|destination|conflict|engine|failed|cancelled))|add\.mediaResolveFailed)$/.test(
-      reason
-    )
+    isDefiniteRejectionKey(reason) ||
+    (reason &&
+      /^task\.storage\.(incomplete|resumeFailed|errors\.(unavailable|busy|destination|conflict|engine|failed|cancelled))$/.test(
+        reason
+      ))
   ) {
     notify('error', reason)
     return
@@ -606,8 +609,13 @@ export function AddTaskForm({
             if (validLines[index]) completedLines.add(validLines[index].line)
           } catch (err) {
             failed += 1
-            if (request.type === 'http') unconfirmed = true
-            firstFailureReason ??= taskCreateFailureReason(err)
+            // A definite rejection settles the request, so its receipt goes.
+            const rejection = definiteTaskCreateRejection(err)
+            if (request.type === 'http') {
+              if (rejection) forgetPendingCreate(inputs[index].id)
+              else unconfirmed = true
+            }
+            firstFailureReason ??= rejection ?? taskCreateFailureReason(err)
             console.error(err)
           }
         }
@@ -644,8 +652,9 @@ export function AddTaskForm({
         if (firstFailureReason)
           form.setError('urls', {
             type: 'submission',
+            // The textarea translates a bare key; a composed message is text.
             message: unconfirmed
-              ? `${firstFailureReason}\n${t('task.add.submissionUnconfirmed')}`
+              ? `${isDefiniteRejectionKey(firstFailureReason) ? t(firstFailureReason) : firstFailureReason}\n${t('task.add.submissionUnconfirmed')}`
               : firstFailureReason,
           })
         if (blockedByConflict) return
@@ -733,7 +742,10 @@ export function AddTaskForm({
         await completeConflict(result.taskId)
       } catch (error) {
         console.error(error)
-        notifyTaskCreateFailure(platform.notify, taskCreateFailureReason(error))
+        notifyTaskCreateFailure(
+          platform.notify,
+          definiteTaskCreateRejection(error) ?? taskCreateFailureReason(error)
+        )
       } finally {
         setSubmitting(false)
       }

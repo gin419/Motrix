@@ -89,6 +89,13 @@ export enum ErrorCode {
   FfmpegReleaseUnavailable = 'FFMPEG_RELEASE_UNAVAILABLE',
 }
 
+/**
+ * i18n key carried as the message of an `ErrorCode.MediaResolveFailed`
+ * AppError. Electron flattens an AppError to its message across IPC, so the
+ * renderer receives this key verbatim and translates it.
+ */
+export const MEDIA_RESOLVE_FAILED_KEY = 'task.add.mediaResolveFailed'
+
 export enum DownloadErrorCode {
   Unknown = 'DL_UNKNOWN',
   NotFound = 'DL_NOT_FOUND',

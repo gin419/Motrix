@@ -1,11 +1,4 @@
-import { AppError, ErrorCode } from '@shared/errors'
-
-/**
- * i18n key carried as the AppError message. Electron flattens an AppError to
- * its message across IPC, so the renderer receives this key verbatim and
- * translates it, the same way it handles `task.storage.*` keys.
- */
-export const MEDIA_RESOLVE_FAILED_KEY = 'task.add.mediaResolveFailed'
+import { AppError, ErrorCode, MEDIA_RESOLVE_FAILED_KEY } from '@shared/errors'
 
 /**
  * - `command-failed`: activation or the resolve command threw or timed out.
