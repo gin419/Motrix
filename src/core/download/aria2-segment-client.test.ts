@@ -113,6 +113,26 @@ describe('Aria2SegmentClient', () => {
     expect(options.continue).toBe('false')
   })
 
+  it('admits every mirror and refuses the whole job when one is inadmissible', async () => {
+    const { rpc, addUriCalls } = makeFakeRpc()
+    const client = new Aria2SegmentClient(rpc, rpc)
+    await client.addUri(
+      ['https://cdn.test/v.mp4', 'https://mirror.test/v.mp4'],
+      { dir: '/tmp/media', out: '000000.seg' }
+    )
+    expect(addUriCalls.map((call) => call.uris)).toEqual([
+      ['https://cdn.test/v.mp4', 'https://mirror.test/v.mp4'],
+    ])
+
+    await expect(
+      client.addUri(['https://cdn.test/v.mp4', 'ftp://mirror.test/v.mp4'], {
+        dir: '/tmp/media',
+        out: '000001.seg',
+      })
+    ).rejects.toMatchObject({ code: 'TASK_SOURCE_INVALID' })
+    expect(addUriCalls).toHaveLength(1)
+  })
+
   it('forceRemove stops the gid and purges its durable result', async () => {
     const { rpc, forceRemoveCalls, removeDownloadResultCalls } = makeFakeRpc()
     const client = new Aria2SegmentClient(rpc, rpc)

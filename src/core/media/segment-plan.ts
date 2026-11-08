@@ -20,6 +20,12 @@ export interface InitSegment {
 
 export interface MediaPart {
   url: string
+  /**
+   * Other URLs serving the same bytes (a site resolver's mirrors). aria2
+   * receives them with `url` as one download, so it can fall back or split
+   * across hosts. Never set for byte-range parts.
+   */
+  mirrors?: string[]
   index: number
   byteRange?: ByteRange
   key?: KeyRef
@@ -27,6 +33,12 @@ export interface MediaPart {
 
 export interface SegmentPlan {
   container: Container
+  /**
+   * Request headers for this stream only, replacing the job's headers (a
+   * mux audio leg a resolver gave its own headers). Absent, the stream uses
+   * the job's headers.
+   */
+  headers?: Record<string, string>
   init?: InitSegment
   segments: MediaPart[]
   isComplete: boolean

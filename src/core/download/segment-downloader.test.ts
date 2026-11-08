@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { SegmentPlan } from '@core/media/segment-plan'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type {
   PollScheduler,
   SegmentAria2,
@@ -367,6 +367,49 @@ describe('SegmentDownloader', () => {
     fake.fireComplete('gid2')
     fake.fireComplete('gid3')
 
+    await runPromise
+  })
+
+  it('(a2) sends a part’s distinct mirrors with its url as one job, again on retry', async () => {
+    const fake = makeFakeAria2()
+    const dl = new SegmentDownloader({
+      aria2: fake.aria2,
+      tmpDir: TMP,
+      pollScheduler: neverSchedule,
+    })
+    const plan: SegmentPlan = {
+      container: 'single',
+      isComplete: true,
+      segments: [
+        {
+          url: 'https://cdn.example/v.mp4',
+          mirrors: [
+            'https://mirror-a.example/v.mp4',
+            'https://cdn.example/v.mp4',
+            'https://mirror-b.example/v.mp4',
+          ],
+          index: 0,
+        },
+      ],
+    }
+
+    const runPromise = dl.run(plan, {}, () => {})
+    await new Promise((resolve) => setImmediate(resolve))
+    fake.fireError('gid1')
+    await vi.waitFor(() => expect(fake.addUriCalls).toHaveLength(2))
+
+    const expected = [
+      'https://cdn.example/v.mp4',
+      'https://mirror-a.example/v.mp4',
+      'https://mirror-b.example/v.mp4',
+    ]
+    expect(fake.addUriCalls.map((call) => call.uris)).toEqual([
+      expected,
+      expected,
+    ])
+    expect(fake.addUriCalls[1].opts.out).toBe(fake.addUriCalls[0].opts.out)
+
+    fake.fireComplete('gid2')
     await runPromise
   })
 

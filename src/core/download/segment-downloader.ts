@@ -130,6 +130,12 @@ function padIndex(n: number): string {
   return `${String(n).padStart(PAD, '0')}.seg`
 }
 
+/** The part's URL first, then its distinct mirrors, for one aria2 job. */
+function partUris(part: InitSegment | MediaPart): string[] {
+  const mirrors = 'mirrors' in part ? (part.mirrors ?? []) : []
+  return [...new Set([part.url, ...mirrors])]
+}
+
 function buildHeaders(
   part: InitSegment | MediaPart,
   requestHeaders: Record<string, string>
@@ -481,7 +487,7 @@ export class SegmentDownloader {
           const operation = (async () => {
             let gid: string
             try {
-              gid = await this.aria2.addUri([job.part.url], {
+              gid = await this.aria2.addUri(partUris(job.part), {
                 dir: this.tmpDir,
                 out: path.basename(job.outPath),
                 header: partHeaders.length > 0 ? partHeaders : undefined,

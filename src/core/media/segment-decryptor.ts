@@ -2,19 +2,24 @@ import { createDecipheriv } from 'node:crypto'
 import { admitHttpSource } from '@core/task/source-admission'
 import { cancelResponseBody, fetchSource } from './fetch-source'
 
+type FetchKey = (
+  uri: string,
+  headers: Record<string, string>
+) => Promise<Uint8Array>
+
 export class SegmentDecryptor {
   private keyCache: Map<string, Promise<Uint8Array>>
 
-  private defaultFetchKey: (uri: string) => Promise<Uint8Array>
+  private defaultFetchKey: FetchKey
 
-  constructor(fetchKey?: (uri: string) => Promise<Uint8Array>) {
+  constructor(fetchKey?: FetchKey) {
     this.keyCache = new Map()
 
     if (fetchKey) {
       this.defaultFetchKey = fetchKey
     } else {
-      this.defaultFetchKey = async (uri: string) => {
-        const response = await fetchSource(uri)
+      this.defaultFetchKey = async (uri, headers) => {
+        const response = await fetchSource(uri, { headers })
         if (!response.ok) {
           await cancelResponseBody(response)
           throw new Error(`Key request failed: HTTP ${response.status}`)
@@ -84,18 +89,39 @@ export class SegmentDecryptor {
     }
   }
 
-  async getKey(uri: string): Promise<Uint8Array> {
+  /**
+   * Fetch (once) the AES-128 key at `uri`, sending `headers` (the caller
+   * restricts them to what the key host may see). Concurrent and later
+   * calls share one request per URI and header set; a failed request is
+   * forgotten so the next media task can try again.
+   */
+  async getKey(
+    uri: string,
+    headers: Record<string, string> = {}
+  ): Promise<Uint8Array> {
     uri = admitHttpSource(uri)
+    const cacheKey = keyCacheKey(uri, headers)
     // Return cached promise if available (concurrent-safe)
-    const cached = this.keyCache.get(uri)
+    const cached = this.keyCache.get(cacheKey)
     if (cached) {
       return cached
     }
 
     // Store the promise immediately to handle concurrent calls
-    const keyPromise = this.defaultFetchKey(uri)
-    this.keyCache.set(uri, keyPromise)
+    const keyPromise = this.defaultFetchKey(uri, { ...headers })
+    this.keyCache.set(cacheKey, keyPromise)
+    keyPromise.catch(() => {
+      if (this.keyCache.get(cacheKey) === keyPromise)
+        this.keyCache.delete(cacheKey)
+    })
 
     return keyPromise
   }
+}
+
+function keyCacheKey(uri: string, headers: Record<string, string>): string {
+  const entries = Object.entries(headers)
+    .map(([name, value]) => [name.toLowerCase(), value])
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return JSON.stringify([uri, entries])
 }

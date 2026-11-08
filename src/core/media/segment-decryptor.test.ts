@@ -54,6 +54,52 @@ describe('SegmentDecryptor', () => {
     expect(cancel).toHaveBeenCalledOnce()
   })
 
+  it('sends the given headers on the key request', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(new Uint8Array(16)))
+    vi.stubGlobal('fetch', fetch)
+    await new SegmentDecryptor().getKey('https://cdn.test/key', {
+      Referer: 'https://video.test/watch',
+    })
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      'https://cdn.test/key',
+      expect.objectContaining({
+        headers: { Referer: 'https://video.test/watch' },
+      })
+    )
+  })
+
+  it('forgets a failed key request so a later task can retry it', async () => {
+    const key = new Uint8Array(16).fill(3)
+    const fetchKey = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Key request failed: HTTP 503'))
+      .mockResolvedValueOnce(key)
+    const decryptor = new SegmentDecryptor(fetchKey)
+    await expect(decryptor.getKey('https://cdn.test/key')).rejects.toThrow(
+      'HTTP 503'
+    )
+    await expect(decryptor.getKey('https://cdn.test/key')).resolves.toEqual(key)
+    expect(fetchKey).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not share a key fetched with other headers', async () => {
+    const fetchKey = vi.fn(async () => new Uint8Array(16))
+    const decryptor = new SegmentDecryptor(fetchKey)
+    await decryptor.getKey('https://cdn.test/key', {
+      Referer: 'https://a.test/',
+    })
+    await decryptor.getKey('https://cdn.test/key', {
+      referer: 'https://a.test/',
+    })
+    await decryptor.getKey('https://cdn.test/key', {
+      Referer: 'https://b.test/',
+    })
+    expect(fetchKey.mock.calls).toEqual([
+      ['https://cdn.test/key', { Referer: 'https://a.test/' }],
+      ['https://cdn.test/key', { Referer: 'https://b.test/' }],
+    ])
+  })
+
   describe('decrypt with known AES-128-CBC vector', () => {
     it('decrypts PKCS7-padded ciphertext to plaintext', () => {
       const plaintext = Buffer.from('Hello, World! 1234')
@@ -165,7 +211,7 @@ describe('SegmentDecryptor', () => {
 
       // fetchKey should be called only once
       expect(fetchKey).toHaveBeenCalledTimes(1)
-      expect(fetchKey).toHaveBeenCalledWith(uri)
+      expect(fetchKey).toHaveBeenCalledWith(uri, {})
     })
 
     it('handles concurrent getKey calls, storing promise before awaiting', async () => {
@@ -192,7 +238,7 @@ describe('SegmentDecryptor', () => {
 
       // fetchKey should be called only once (concurrent-safe promise caching)
       expect(fetchKey).toHaveBeenCalledTimes(1)
-      expect(fetchKey).toHaveBeenCalledWith(uri)
+      expect(fetchKey).toHaveBeenCalledWith(uri, {})
     })
   })
 
@@ -210,7 +256,7 @@ describe('SegmentDecryptor', () => {
       const result = await decryptor.getKey(uri)
 
       expect(result).toEqual(key)
-      expect(customFetchKey).toHaveBeenCalledWith(uri)
+      expect(customFetchKey).toHaveBeenCalledWith(uri, {})
     })
   })
 

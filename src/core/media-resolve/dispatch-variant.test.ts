@@ -68,6 +68,60 @@ describe('dispatchMediaVariant', () => {
     })
   })
 
+  it('passes each mux leg’s distinct mirrors on to the pipeline', async () => {
+    const target = fakeMediaTarget()
+    const raw = muxVariant('https://cdn.example/v', 'https://cdn.example/a')
+    raw.source.video = {
+      url: 'https://cdn.example/v',
+      mirrors: ['https://cdn.example/v', 'https://m1.example/v'],
+    } as typeof raw.source.video
+    raw.source.audio = {
+      url: 'https://cdn.example/a',
+      mirrors: ['https://m1.example/a', 'https://m2.example/a'],
+    } as typeof raw.source.audio
+    await dispatchMediaVariant(variant(raw), base, target)
+    expect(target.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        videoMirrors: ['https://m1.example/v'],
+        audioMirrors: ['https://m1.example/a', 'https://m2.example/a'],
+      })
+    )
+  })
+
+  it('sends a mux audio leg its own headers, else the video leg’s', async () => {
+    const own = fakeMediaTarget()
+    const raw = muxVariant('https://cdn.example/v', 'https://audio.example/a', {
+      Referer: 'https://video.example/',
+    })
+    raw.source.audio = {
+      url: 'https://audio.example/a',
+      headers: { Origin: 'https://video.example' },
+    } as typeof raw.source.audio
+    await dispatchMediaVariant(variant(raw), base, own)
+    expect(own.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        sanitizedHeaders: { Referer: 'https://video.example/' },
+        audioHeaders: { Origin: 'https://video.example' },
+      })
+    )
+
+    const shared = fakeMediaTarget()
+    await dispatchMediaVariant(
+      variant(
+        muxVariant('https://cdn.example/v', 'https://cdn.example/a', {
+          Referer: 'https://video.example/',
+        })
+      ),
+      base,
+      shared
+    )
+    const adapted = shared.mux.dispatch.mock.calls[0]?.[0]
+    expect(adapted).toMatchObject({
+      sanitizedHeaders: { Referer: 'https://video.example/' },
+    })
+    expect(adapted).not.toHaveProperty('audioHeaders')
+  })
+
   it.each([
     ['hls', 'ts', 'ts'],
     ['dash', 'ts', 'mp4'],

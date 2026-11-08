@@ -18,6 +18,7 @@ import { getLogger } from '@core/logger'
 import type { assembleSegments } from '@core/media/segment-assembler'
 import type { SegmentDecryptor } from '@core/media/segment-decryptor'
 import type { SegmentPlan } from '@core/media/segment-plan'
+import { pickStreamHeaders } from '@core/media-resolve/site-resolution'
 import type { MediaPhase } from '@shared/schemas/media-progress'
 import type { SourceMeta } from '@shared/types/task'
 import {
@@ -241,11 +242,16 @@ export class MediaTaskCoordinator {
     onAccepted?: () => void
   ): Promise<{ taskId: string }> {
     const admitPlan = (plan: SegmentPlan): SegmentPlan => {
-      const admitPart = <T extends { url: string; key?: { uri: string } }>(
+      const admitPart = <
+        T extends { url: string; mirrors?: string[]; key?: { uri: string } },
+      >(
         part: T
       ): T => ({
         ...part,
         url: admitHttpSource(part.url),
+        ...(part.mirrors
+          ? { mirrors: part.mirrors.map((mirror) => admitHttpSource(mirror)) }
+          : {}),
         ...(part.key
           ? { key: { ...part.key, uri: admitHttpSource(part.key.uri) } }
           : {}),
@@ -640,7 +646,7 @@ export class MediaTaskCoordinator {
 
       const runVideo = videoDownloader.run(
         job.video,
-        job.headers,
+        streamHeaders(job, job.video),
         onStreamProgress(videoBytes, TaskInstancePhase.HlsSegment),
         onFileProgress('video')
       )
@@ -652,7 +658,7 @@ export class MediaTaskCoordinator {
         audioDownloader && audioPlan
           ? audioDownloader.run(
               audioPlan,
-              job.headers,
+              streamHeaders(job, audioPlan),
               onStreamProgress(audioBytes, TaskInstancePhase.HlsAudio),
               onFileProgress('audio')
             )
@@ -675,10 +681,10 @@ export class MediaTaskCoordinator {
       ) {
         await changePhase('decrypting')
       }
-      await decryptPlan(job.video, videoResult, this.deps.decryptor)
+      await decryptPlan(job, job.video, videoResult, this.deps.decryptor)
       assertActive()
       if (job.audio && audioResult) {
-        await decryptPlan(job.audio, audioResult, this.deps.decryptor)
+        await decryptPlan(job, job.audio, audioResult, this.deps.decryptor)
         assertActive()
       }
 
@@ -1273,14 +1279,27 @@ function mapError(err: Error): string {
   return err.message
 }
 
+/** The request headers for one stream of a job: its own, else the job's. */
+function streamHeaders(
+  job: MediaJob,
+  plan: SegmentPlan
+): Record<string, string> {
+  return plan.headers ?? job.headers
+}
+
 async function decryptPlan(
+  job: MediaJob,
   plan: SegmentPlan,
   result: { initPath?: string; partPaths: string[] },
   decryptor: SegmentDecryptor
 ): Promise<void> {
+  // A key server may check Referer/Origin like the stream host does, but the
+  // key URI comes from the playlist: send it only the stream allowlist, never
+  // the page's Cookie or Authorization.
+  const keyHeaders = pickStreamHeaders(streamHeaders(job, plan))
   // Decrypt init segment if it has a key
   if (plan.init?.key && result.initPath) {
-    const key = await decryptor.getKey(plan.init.key.uri)
+    const key = await decryptor.getKey(plan.init.key.uri, keyHeaders)
     const ct = await fs.promises.readFile(result.initPath)
     const pt = decryptor.decrypt(new Uint8Array(ct), key, plan.init.key.iv)
     await fs.promises.writeFile(result.initPath, pt)
@@ -1300,7 +1319,7 @@ async function decryptPlan(
         .map(async (seg, offset) => {
           const partPath = result.partPaths[i + offset]
           if (!seg.key || !partPath) return
-          const key = await decryptor.getKey(seg.key.uri)
+          const key = await decryptor.getKey(seg.key.uri, keyHeaders)
           const ct = await fs.promises.readFile(partPath)
           const pt = decryptor.decrypt(new Uint8Array(ct), key, seg.key.iv)
           await fs.promises.writeFile(partPath, pt)
