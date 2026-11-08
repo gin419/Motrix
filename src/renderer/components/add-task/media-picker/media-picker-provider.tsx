@@ -13,10 +13,13 @@ import {
 import { useFormContext, useWatch } from 'react-hook-form'
 import { parseUrlLines } from '../url-interpreters/multiline-url'
 import {
+  EMPTY_PICK_SESSION,
   type HttpTaskCreateRequest,
   type MediaPickerCreated,
   MediaPickerDialog,
   type MediaPickerTarget,
+  type MediaPickSession,
+  type MediaPickSessionUpdate,
 } from './media-picker-dialog'
 import {
   type MediaLineMatch,
@@ -51,7 +54,7 @@ interface MediaPickerProviderProps {
 /**
  * Owns the media picker of the Add Task form: which lines a site resolver
  * claims, the open picker, and folding its created tasks back into the
- * form (the line goes once every picked part was added).
+ * form: the line goes once parts were added and the picker closes.
  */
 export function MediaPickerProvider({
   enabled,
@@ -67,6 +70,21 @@ export function MediaPickerProvider({
   const active = enabled && (tab ?? 'links') === 'links'
   const matches = useMediaResolverMatches(active ? (urls ?? '') : '', active)
   const [target, setTarget] = useState<MediaPickerTarget | null>(null)
+  // Per page, for the life of the form: a page pasted again remembers what
+  // was added and which requests are still unconfirmed.
+  const [sessions, setSessions] = useState<
+    ReadonlyMap<string, MediaPickSession>
+  >(() => new Map())
+  const updateSession = useCallback(
+    (url: string, update: MediaPickSessionUpdate) =>
+      setSessions((current) =>
+        new Map(current).set(
+          url,
+          update(current.get(url) ?? EMPTY_PICK_SESSION)
+        )
+      ),
+    []
+  )
 
   const requestBase = useCallback(
     (url: string): HttpTaskCreateRequest | null => {
@@ -142,6 +160,8 @@ export function MediaPickerProvider({
       {enabled && (
         <MediaPickerDialog
           target={target}
+          session={(target && sessions.get(target.url)) || EMPTY_PICK_SESSION}
+          onSessionChange={updateSession}
           requestBase={requestBase}
           onClose={() => setTarget(null)}
           onCreated={handleCreated}

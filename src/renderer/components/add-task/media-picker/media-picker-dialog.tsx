@@ -54,15 +54,49 @@ export interface MediaPickerCreated {
   firstTaskId: string
 }
 
+/**
+ * What the picker achieved for one page. The form keeps it across openings,
+ * so reopening the picker neither adds a part twice nor loses a request
+ * whose outcome is unknown.
+ */
+export interface MediaPickSession {
+  /** Row results by entry id: added parts and why a part failed. */
+  status: ReadonlyMap<string, EntryRowStatus>
+  /**
+   * Requests whose outcome is unknown, by entry id. A retry resends the
+   * same request, so the host can recognize a create that did succeed.
+   */
+  unconfirmed: ReadonlyMap<string, HttpTaskCreateRequest>
+  /** The unconfirmed "page as a file" request, resent the same way. */
+  pageFile: HttpTaskCreateRequest | null
+}
+
+export const EMPTY_PICK_SESSION: MediaPickSession = {
+  status: new Map(),
+  unconfirmed: new Map(),
+  pageFile: null,
+}
+
+export type MediaPickSessionUpdate = (
+  session: MediaPickSession
+) => MediaPickSession
+
 interface MediaPickerDialogProps {
   target: MediaPickerTarget | null
+  /** The target page's session. */
+  session: MediaPickSession
+  onSessionChange: (url: string, update: MediaPickSessionUpdate) => void
   /**
    * The form's request fields (save folder, headers, proxy) for this page,
    * or null when no save folder is chosen.
    */
   requestBase: (url: string) => HttpTaskCreateRequest | null
+  /** Closed with nothing added. */
   onClose: () => void
-  /** Every picked part (or the page as a file) was added. */
+  /**
+   * Parts (or the page as a file) were added: every pick, or some before
+   * the user closed the picker.
+   */
   onCreated: (created: MediaPickerCreated) => void
 }
 
@@ -99,6 +133,8 @@ function describeCreateFailure(error: unknown): {
 
 export function MediaPickerDialog({
   target,
+  session,
+  onSessionChange,
   requestBase,
   onClose,
   onCreated,
@@ -110,7 +146,8 @@ export function MediaPickerDialog({
     useMediaResolve()
   const [creating, setCreating] = useState(false)
   const [pageFileError, setPageFileError] = useState<string | null>(null)
-  const pageFileRequestId = useRef<string | null>(null)
+  // The first task added since this opening, if any.
+  const createdHere = useRef<string | null>(null)
   const open = target !== null
   const url = target?.url ?? null
   // What the dialog shows; it keeps the last page while animating closed.
@@ -121,7 +158,7 @@ export function MediaPickerDialog({
       cancel()
       return
     }
-    pageFileRequestId.current = null
+    createdHere.current = null
     setPageFileError(null)
     void resolve(url)
   }, [url, resolve, cancel])
@@ -130,6 +167,17 @@ export function MediaPickerDialog({
     if (url !== null) void resolve(url)
   }, [url, resolve])
 
+  const finish = useCallback(() => {
+    if (url === null) return
+    if (createdHere.current)
+      onCreated({ url, firstTaskId: createdHere.current })
+    else onClose()
+  }, [url, onCreated, onClose])
+
+  const partCreated = useCallback((taskId: string) => {
+    createdHere.current ??= taskId
+  }, [])
+
   const downloadPageAsFile = useCallback(async () => {
     if (url === null) return
     const base = requestBase(url)
@@ -137,25 +185,26 @@ export function MediaPickerDialog({
       setPageFileError(t('task.add.errors.saveDirRequired'))
       return
     }
-    pageFileRequestId.current ??= uuidv7()
+    const request: HttpTaskCreateRequest = session.pageFile ?? {
+      ...base,
+      uris: [url],
+      requestId: uuidv7(),
+      mediaResolve: 'skip',
+    }
+    const keep = (pageFile: HttpTaskCreateRequest | null) =>
+      onSessionChange(url, (current) => ({ ...current, pageFile }))
     setCreating(true)
     setPageFileError(null)
     try {
-      const result = await createTask({
-        ...base,
-        uris: [url],
-        requestId: pageFileRequestId.current,
-        mediaResolve: 'skip',
-      })
+      const result = await createTask(request)
+      keep(null)
       if (result.outcome === 'invalid-source') {
-        pageFileRequestId.current = null
         setPageFileError(
           t(`task.add.sourceErrors.${result.failure.diagnostic.reason}`)
         )
         return
       }
       if (result.outcome === 'conflict') {
-        pageFileRequestId.current = null
         setPageFileError(t('task.add.createFailed'))
         return
       }
@@ -164,7 +213,8 @@ export function MediaPickerDialog({
     } catch (error) {
       console.error(error)
       const { text, unconfirmed } = describeCreateFailure(error)
-      if (!unconfirmed) pageFileRequestId.current = null
+      // A definite rejection settles the request; a retry is a new one.
+      keep(unconfirmed ? request : null)
       setPageFileError(
         unconfirmed
           ? `${t(text.key, text.values)}\n${t('task.add.submissionUnconfirmed')}`
@@ -173,13 +223,29 @@ export function MediaPickerDialog({
     } finally {
       setCreating(false)
     }
-  }, [url, requestBase, createTask, onCreated, platform, t])
+  }, [
+    url,
+    session.pageFile,
+    requestBase,
+    createTask,
+    onCreated,
+    onSessionChange,
+    platform,
+    t,
+  ])
+
+  const changeSession = useCallback(
+    (update: MediaPickSessionUpdate) => {
+      if (url !== null) onSessionChange(url, update)
+    },
+    [url, onSessionChange]
+  )
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next && !creating) onClose()
+        if (!next && !creating) finish()
       }}
       onOpenChangeComplete={(next) => {
         if (!next) close()
@@ -196,12 +262,14 @@ export function MediaPickerDialog({
             url={shown.url}
             preview={state.preview}
             entries={entries}
+            session={session}
+            onSessionChange={changeSession}
             creating={creating}
             setCreating={setCreating}
             requestBase={requestBase}
             loadEntries={loadEntries}
-            onClose={onClose}
-            onCreated={onCreated}
+            onPartCreated={partCreated}
+            onFinish={finish}
           />
         ) : (
           <StatusView
@@ -209,7 +277,7 @@ export function MediaPickerDialog({
             pluginName={shown?.pluginName ?? ''}
             creating={creating}
             pageFileError={pageFileError}
-            onClose={onClose}
+            onClose={finish}
             onRetry={retry}
             onDownloadPageAsFile={() => void downloadPageAsFile()}
           />
@@ -327,40 +395,67 @@ function StatusView({
   )
 }
 
+/** The parts picked when the picker opens: failed ones, else the page's own. */
+function openingSelection(
+  preview: MediaPreview,
+  status: ReadonlyMap<string, EntryRowStatus>
+): Set<string> {
+  const failed = preview.entries
+    .filter(
+      (entry) =>
+        isEntrySelectable(entry) && status.get(entry.id)?.kind === 'failed'
+    )
+    .map((entry) => entry.id)
+  if (failed.length > 0) return new Set(failed)
+  return new Set(
+    [...initialSelection(preview)].filter(
+      (id) => status.get(id)?.kind !== 'created'
+    )
+  )
+}
+
 function ReadyView({
   url,
   preview,
   entries,
+  session,
+  onSessionChange,
   creating,
   setCreating,
   requestBase,
   loadEntries,
-  onClose,
-  onCreated,
+  onPartCreated,
+  onFinish,
 }: {
   url: string
   preview: MediaPreview
   entries: ReturnType<typeof useMediaResolve>['entries']
+  session: MediaPickSession
+  onSessionChange: (update: MediaPickSessionUpdate) => void
   creating: boolean
   setCreating: (creating: boolean) => void
   requestBase: (url: string) => HttpTaskCreateRequest | null
   loadEntries: (preview: MediaPreview, entryIds: string[]) => Promise<void>
-  onClose: () => void
-  onCreated: (created: MediaPickerCreated) => void
+  onPartCreated: (taskId: string) => void
+  /** Leave the picker, keeping what was added. */
+  onFinish: () => void
 }) {
   const { t } = useTranslation()
   const platform = usePlatformServices()
   const createTask = useCreateMediaTask()
   const folderSwitchId = useId()
-  const [selected, setSelected] = useState(() => initialSelection(preview))
+  // The session as this opening found it.
+  const [opening] = useState(session)
+  const [selected, setSelected] = useState(() =>
+    openingSelection(preview, opening.status)
+  )
   const [quality, setQuality] = useState<string | null>(null)
   const [saveToFolder, setSaveToFolder] = useState(true)
   const [status, setStatus] = useState<ReadonlyMap<string, EntryRowStatus>>(
-    () => new Map()
+    () => new Map(opening.status)
   )
   const [notice, setNotice] = useState<string | null>(null)
-  const requestIds = useRef(new Map<string, string>())
-  const firstTaskId = useRef<string | null>(null)
+  const unconfirmed = useRef(new Map(opening.unconfirmed))
 
   const picks = preview.entries.filter(
     (entry) =>
@@ -370,6 +465,10 @@ function ReadyView({
   )
   const pickIds = new Set(picks.map((entry) => entry.id))
   const created = [...status.values()].filter((s) => s.kind === 'created')
+  const createdHere = [...status].filter(
+    ([id, s]) =>
+      s.kind === 'created' && opening.status.get(id)?.kind !== 'created'
+  ).length
   const multiPart = picks.length + created.length > 1
   const plan = planQualities(preview, pickIds)
   const qualityValue =
@@ -401,19 +500,18 @@ function ReadyView({
     setNotice(null)
     setCreating(true)
     const next = new Map(status)
+    const before = createdHere
     let ok = 0
     let failed = 0
     try {
       for (const entry of picks) {
-        let requestId = requestIds.current.get(entry.id)
-        if (!requestId) {
-          requestId = uuidv7()
-          requestIds.current.set(entry.id, requestId)
-        }
-        const request: HttpTaskCreateRequest = {
+        // An unconfirmed part is resent unchanged, whatever the options now.
+        const request: HttpTaskCreateRequest = unconfirmed.current.get(
+          entry.id
+        ) ?? {
           ...base,
           uris: [url],
-          requestId,
+          requestId: uuidv7(),
           mediaPick: buildMediaPick(
             preview,
             entry.id,
@@ -423,8 +521,8 @@ function ReadyView({
         }
         try {
           const result = await createTask(request)
+          unconfirmed.current.delete(entry.id)
           if (result.outcome === 'invalid-source') {
-            requestIds.current.delete(entry.id)
             next.set(entry.id, {
               kind: 'failed',
               message: t(
@@ -435,7 +533,6 @@ function ReadyView({
             continue
           }
           if (result.outcome === 'conflict') {
-            requestIds.current.delete(entry.id)
             next.set(entry.id, {
               kind: 'failed',
               message: t('task.add.createFailed'),
@@ -444,18 +541,20 @@ function ReadyView({
             continue
           }
           ok += 1
-          firstTaskId.current ??= result.taskId ?? result.gid
+          onPartCreated(result.taskId ?? result.gid)
           next.set(entry.id, { kind: 'created' })
         } catch (error) {
           console.error(error)
           failed += 1
-          const { text, unconfirmed } = describeCreateFailure(error)
+          const { text, unconfirmed: outcomeUnknown } =
+            describeCreateFailure(error)
           // A definite rejection settles the request; a retry is a new one.
-          if (!unconfirmed) requestIds.current.delete(entry.id)
+          if (outcomeUnknown) unconfirmed.current.set(entry.id, request)
+          else unconfirmed.current.delete(entry.id)
           const message = t(text.key, text.values)
           next.set(entry.id, {
             kind: 'failed',
-            message: unconfirmed
+            message: outcomeUnknown
               ? `${message}\n${t('task.add.submissionUnconfirmed')}`
               : message,
           })
@@ -464,6 +563,12 @@ function ReadyView({
     } finally {
       setStatus(next)
       setCreating(false)
+      const kept = new Map(unconfirmed.current)
+      onSessionChange((current) => ({
+        ...current,
+        status: next,
+        unconfirmed: kept,
+      }))
     }
     setSelected(
       new Set(
@@ -471,13 +576,12 @@ function ReadyView({
       )
     )
     if (failed === 0 && ok > 0) {
-      if (ok + created.length === 1) platform.notify('info', 'task.add.created')
+      if (ok + before === 1) platform.notify('info', 'task.add.created')
       else
         platform.notify('info', 'task.add.batchCreated', {
-          count: ok + created.length,
+          count: ok + before,
         })
-      if (firstTaskId.current)
-        onCreated({ url, firstTaskId: firstTaskId.current })
+      onFinish()
     } else if (ok > 0) {
       platform.notify('warn', 'task.add.createdPartial', { ok, failed })
     }
@@ -597,9 +701,9 @@ function ReadyView({
           variant="outline"
           size="sm"
           disabled={creating}
-          onClick={onClose}
+          onClick={onFinish}
         >
-          {t('common.cancel')}
+          {createdHere > 0 ? t('common.close') : t('common.cancel')}
         </Button>
         <Button
           type="button"

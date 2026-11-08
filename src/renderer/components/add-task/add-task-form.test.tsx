@@ -481,7 +481,24 @@ describe('AddTaskForm', () => {
       ],
     }
 
-    function serveMedia(create: (request: any) => unknown) {
+    const series = {
+      ...preview,
+      title: 'Sample Series',
+      folderName: 'Sample Series',
+      defaultEntryId: 'ep:1',
+      entries: [1, 2, 3].map((index) => ({
+        ...preview.entries[0],
+        id: `ep:${index}`,
+        index,
+        title: `Episode ${index}`,
+        current: index === 1,
+      })),
+    }
+
+    function serveMedia(
+      create: (request: any) => unknown,
+      resolved: (request: any) => unknown = () => ({ status: 'ok', preview })
+    ) {
       invokeMock.mockImplementation(async (channel: string, request: any) => {
         if (channel === Queries.MatchMediaResolvers)
           return {
@@ -494,7 +511,7 @@ describe('AddTaskForm', () => {
                 : null
             ),
           }
-        if (channel === Commands.ResolveMedia) return { status: 'ok', preview }
+        if (channel === Commands.ResolveMedia) return resolved(request)
         if (channel === Commands.CreateTask) return create(request)
         return {}
       })
@@ -565,6 +582,130 @@ describe('AddTaskForm', () => {
       await waitFor(() =>
         expect(onSubmitSuccess).toHaveBeenCalledWith('task-1')
       )
+    })
+
+    it('folds a partly added pick back into the form when the picker closes', async () => {
+      serveMedia(
+        (request) => {
+          if (request.mediaPick.entryId === 'ep:2')
+            throw new Error(
+              "Error invoking remote method 'command:createTask': Error: task.add.media.failure.variantGone"
+            )
+          return { gid: `gid-${request.mediaPick.entryId}` }
+        },
+        () => ({ status: 'ok', preview: series })
+      )
+      const onSubmitSuccess = vi.fn()
+      renderForm({
+        onSubmitSuccess,
+        defaultValues: {
+          tab: 'links',
+          urls: `${page}\nhttps://example.com/file.zip`,
+          saveDir: '/d',
+        },
+      })
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'Example Resolver: Choose parts & quality',
+        })
+      )
+      await userEvent.click(
+        await screen.findByRole('checkbox', { name: 'Select all' })
+      )
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Download (3)' })
+      )
+      await screen.findByText(/no longer offers the part or quality/)
+      // Parts were added, so leaving the picker keeps them: Close, not Cancel.
+      expect(
+        screen.queryByRole('button', { name: 'Cancel' })
+      ).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'URLs' })).toHaveValue(
+          'https://example.com/file.zip'
+        )
+      )
+      expect(onSubmitSuccess).not.toHaveBeenCalled()
+
+      // Pasting the page again shows what was already added.
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'URLs' }),
+        `{Enter}${page}`
+      )
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Choose parts & quality/ })
+      )
+      const added = await screen.findByRole('checkbox', {
+        name: 'P1 Episode 1',
+      })
+      expect(added).toHaveAttribute('aria-disabled', 'true')
+      expect(
+        screen.getByRole('checkbox', { name: 'P2 Episode 2' })
+      ).toBeChecked()
+      expect(
+        screen.getByRole('checkbox', { name: 'P3 Episode 3' })
+      ).toHaveAttribute('aria-disabled', 'true')
+      // Nothing was added in this opening yet.
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    })
+
+    it('resends an unconfirmed part unchanged after the picker is reopened', async () => {
+      let resolves = 0
+      let creates = 0
+      serveMedia(
+        () => {
+          creates += 1
+          if (creates === 1) throw new TypeError('Failed to fetch')
+          return { gid: 'gid-1', taskId: 'task-1' }
+        },
+        () => {
+          resolves += 1
+          return {
+            status: 'ok',
+            preview: {
+              ...preview,
+              resolutionId: `0190a6d0-0000-7000-8000-00000000000${resolves}`,
+            },
+          }
+        }
+      )
+      const onSubmitSuccess = vi.fn()
+      renderForm({
+        onSubmitSuccess,
+        defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+      })
+      const chip = await screen.findByRole('button', {
+        name: 'Example Resolver: Choose parts & quality',
+      })
+      await userEvent.click(chip)
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Download (1)' })
+      )
+      await screen.findByText(/The result is unconfirmed/)
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      )
+
+      await userEvent.click(chip)
+      expect(
+        await screen.findByText(/The result is unconfirmed/)
+      ).toBeInTheDocument()
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Download (1)' })
+      )
+      await waitFor(() =>
+        expect(onSubmitSuccess).toHaveBeenCalledWith('task-1')
+      )
+      const sent = invokeMock.mock.calls
+        .filter(([channel]) => channel === Commands.CreateTask)
+        .map(([, request]) => request)
+      expect(sent).toHaveLength(2)
+      expect(resolves).toBe(2)
+      // The same request, so the host can recognize a create that succeeded.
+      expect(sent[1]).toEqual(sent[0])
     })
 
     it('offers no picker when re-downloading a task', async () => {

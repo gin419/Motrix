@@ -13,10 +13,13 @@ import type {
   ResolveMediaResult,
 } from '@shared/schemas/media-resolution'
 import { holdExitAnimation } from '@test-utils/hold-exit-animation'
+import { useState } from 'react'
 import {
+  EMPTY_PICK_SESSION,
   type HttpTaskCreateRequest,
   MediaPickerDialog,
   type MediaPickerTarget,
+  type MediaPickSession,
 } from './media-picker-dialog'
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }))
@@ -93,18 +96,43 @@ const base: HttpTaskCreateRequest = {
   headers: [],
 }
 
+type DialogProps = Parameters<typeof MediaPickerDialog>[0]
+
+/** Keeps the page sessions the way the form's provider does. */
+function SessionHost(props: Omit<DialogProps, 'session' | 'onSessionChange'>) {
+  const [sessions, setSessions] = useState(
+    () => new Map<string, MediaPickSession>()
+  )
+  return (
+    <MediaPickerDialog
+      {...props}
+      session={
+        (props.target && sessions.get(props.target.url)) || EMPTY_PICK_SESSION
+      }
+      onSessionChange={(url, update) =>
+        setSessions((current) =>
+          new Map(current).set(
+            url,
+            update(current.get(url) ?? EMPTY_PICK_SESSION)
+          )
+        )
+      }
+    />
+  )
+}
+
 function renderDialog(
   target: MediaPickerTarget | null = {
     url: PAGE,
     pluginName: 'Example Resolver',
   },
-  props: Partial<Parameters<typeof MediaPickerDialog>[0]> = {}
+  props: Partial<Omit<DialogProps, 'session' | 'onSessionChange'>> = {}
 ) {
   const onClose = vi.fn()
   const onCreated = vi.fn()
   const element = (next: MediaPickerTarget | null) => (
     <PlatformServicesProvider services={services}>
-      <MediaPickerDialog
+      <SessionHost
         target={next}
         requestBase={() => base}
         onClose={onClose}
