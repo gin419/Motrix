@@ -8,6 +8,8 @@ export enum ErrorCode {
   EngineProcessTerminationFailed = 'ENGINE_PROCESS_TERMINATION_FAILED',
   TaskCreateFailed = 'TASK_CREATE_FAILED',
   TaskSourceInvalid = 'TASK_SOURCE_INVALID',
+  /** A matching site-resolver plugin failed; the page is not downloaded. */
+  MediaResolveFailed = 'MEDIA_RESOLVE_FAILED',
   TaskNotFound = 'TASK_NOT_FOUND',
   TaskRevealFailed = 'TASK_REVEAL_FAILED',
   TaskOpenFailed = 'TASK_OPEN_FAILED',
@@ -86,6 +88,13 @@ export enum ErrorCode {
   FfmpegInstallFailed = 'FFMPEG_INSTALL_FAILED',
   FfmpegReleaseUnavailable = 'FFMPEG_RELEASE_UNAVAILABLE',
 }
+
+/**
+ * i18n key carried as the message of an `ErrorCode.MediaResolveFailed`
+ * AppError. Electron flattens an AppError to its message across IPC, so the
+ * renderer receives this key verbatim and translates it.
+ */
+export const MEDIA_RESOLVE_FAILED_KEY = 'task.add.mediaResolveFailed'
 
 export enum DownloadErrorCode {
   Unknown = 'DL_UNKNOWN',

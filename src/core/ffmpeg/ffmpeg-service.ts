@@ -45,7 +45,24 @@ export function muxerForOutputName(name: string): string {
   return (ext && EXT_TO_MUXER[ext]) || 'mp4'
 }
 
+export interface RemuxResult {
+  /**
+   * Duration of the written output, from ffmpeg's final progress report;
+   * null when ffmpeg reported no output time.
+   */
+  outputDurationSec: number | null
+}
+
 type SpawnImpl = (cmd: string, args: string[]) => ChildProcess
+
+/**
+ * stderr of a decoder that cannot decode on this build at all rather than of
+ * a damaged stream: the native `av1` decoder without a usable hwaccel logs
+ * "Your platform doesn't support hardware accelerated AV1 decoding" and
+ * fails every packet with ENOSYS ("Function not implemented").
+ */
+const DECODER_UNAVAILABLE =
+  /doesn't support hardware accelerated|Function not implemented/
 
 export class FfmpegService {
   private child: ChildProcess | null = null
@@ -82,7 +99,7 @@ export class FfmpegService {
     job: RemuxJob,
     onProgress: (p: FfmpegProgress) => void,
     spawnImpl: SpawnImpl = nodeSpawn as SpawnImpl
-  ): Promise<void> {
+  ): Promise<RemuxResult> {
     this.aborted = false
     const args = this.buildArgs(job)
     const child = spawnImpl(job.binaryPath, args)
@@ -150,7 +167,7 @@ export class FfmpegService {
       }
     })
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<RemuxResult>((resolve, reject) => {
       child.on('error', (err) => {
         closed = true
         reject(new Error(`mux-failed: ${err.message}`))
@@ -162,7 +179,10 @@ export class FfmpegService {
         if (this.aborted) return reject(new Error('mux-aborted'))
         if (code === 0) {
           onProgress({ progress: 1 })
-          return resolve()
+          // ffmpeg's `out_time_ms` key is in microseconds despite its name.
+          return resolve({
+            outputDurationSec: outTimeUs > 0 ? outTimeUs / 1_000_000 : null,
+          })
         }
         // Append the last few non-empty stderr lines — ffmpeg names the
         // offending input/stream here. The message MUST still start with
@@ -180,8 +200,146 @@ export class FfmpegService {
     })
   }
 
+  buildDecodeProbeArgs(job: DecodeProbeJob): string[] {
+    return [
+      '-hide_banner',
+      '-nostdin',
+      // Only error-level messages reach stderr, so each line is a decode or
+      // demux error rather than banner/info noise.
+      '-v',
+      'error',
+      ...(job.startSec && job.startSec > 0
+        ? ['-ss', String(job.startSec)]
+        : []),
+      '-t',
+      String(job.windowSec),
+      '-i',
+      job.input,
+      '-map',
+      '0:v:0',
+      '-an',
+      '-sn',
+      '-dn',
+      '-f',
+      'null',
+      '-progress',
+      'pipe:1',
+      '-nostats',
+      '-',
+    ]
+  }
+
+  /**
+   * Decode a bounded window of the first video stream to the null muxer and
+   * report how many frames came out and how many error lines ffmpeg logged.
+   * Resolves (never rejects) on a timeout, with `timedOut: true`. Rejects
+   * when the process cannot be spawned or when kill() aborts it.
+   */
+  probeDecode(
+    job: DecodeProbeJob,
+    spawnImpl: SpawnImpl = nodeSpawn as SpawnImpl
+  ): Promise<DecodeProbeResult> {
+    if (this.aborted) return Promise.reject(new Error('mux-aborted'))
+    const child = spawnImpl(job.binaryPath, this.buildDecodeProbeArgs(job))
+    this.child = child
+
+    const MAX_LINE = 4096
+    let errors = 0
+    let noVideoStream = false
+    let decoderUnavailable = false
+    let stderrPending = ''
+    const acceptStderrLine = (line: string) => {
+      const text = line.trim()
+      if (!text) return
+      // ffmpeg folds identical consecutive messages into one summary line.
+      const repeated = /Last message repeated (\d+) times?/.exec(text)
+      if (repeated) {
+        errors += Number(repeated[1])
+        return
+      }
+      if (text.includes('matches no streams')) noVideoStream = true
+      if (DECODER_UNAVAILABLE.test(text)) decoderUnavailable = true
+      errors += 1
+    }
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const lines = (stderrPending + chunk.toString()).split(/\r?\n|\r/)
+      stderrPending = (lines.pop() ?? '').slice(-MAX_LINE)
+      for (const line of lines) acceptStderrLine(line)
+    })
+
+    let frames = 0
+    let stdoutPending = ''
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const lines = (stdoutPending + chunk.toString()).split('\n')
+      stdoutPending = (lines.pop() ?? '').slice(-MAX_LINE)
+      for (const line of lines) {
+        const match = /^frame=\s*(\d+)\s*$/.exec(line.trim())
+        if (match) frames = Math.max(frames, Number(match[1]))
+      }
+    })
+
+    return new Promise<DecodeProbeResult>((resolve, reject) => {
+      let settled = false
+      let timedOut = false
+      const timer = setTimeout(() => {
+        timedOut = true
+        child.kill('SIGKILL')
+      }, job.timeoutMs)
+      child.on('error', (err) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        if (this.child === child) this.child = null
+        reject(new Error(`decode-probe-failed: ${err.message}`))
+      })
+      child.on('close', (code) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        if (this.child === child) this.child = null
+        if (this.aborted) return reject(new Error('mux-aborted'))
+        acceptStderrLine(stderrPending)
+        resolve({
+          exitCode: code,
+          frames,
+          errors,
+          noVideoStream,
+          decoderUnavailable,
+          timedOut,
+        })
+      })
+    })
+  }
+
   kill(): void {
     this.aborted = true
     this.child?.kill('SIGKILL')
   }
+}
+
+export interface DecodeProbeJob {
+  binaryPath: string
+  input: string
+  /** Input seek (seconds) before the window; omitted or 0 → file start. */
+  startSec?: number
+  windowSec: number
+  timeoutMs: number
+}
+
+export interface DecodeProbeResult {
+  /** Process exit code; null when it was killed (e.g. on timeout). */
+  exitCode: number | null
+  /** Video frames decoded in the window. */
+  frames: number
+  /** Error-level log lines, with "Last message repeated N times" expanded. */
+  errors: number
+  /** The input has no video stream for `-map 0:v:0` to select. */
+  noVideoStream: boolean
+  /**
+   * The selected decoder cannot run on this build/machine at all (e.g. the
+   * native hwaccel-only `av1` decoder on a build without libdav1d), so its
+   * errors say nothing about the file.
+   */
+  decoderUnavailable: boolean
+  timedOut: boolean
 }

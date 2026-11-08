@@ -1031,6 +1031,7 @@
       "clearSelection": "선택 해제",
       "createFailed": "다운로드 작업을 만들지 못했습니다.",
       "createFailedWithReason": "다운로드 작업을 만들지 못했습니다: {{reason}}",
+      "mediaResolveFailed": "사이트 해석 플러그인이 이 페이지를 읽지 못해 다운로드하지 않았습니다. 나중에 다시 시도하거나 플러그인을 업데이트하세요.",
       "createFailedByPlugin": "작업을 만들지 못했습니다. “{{pluginId}}” 플러그인이 작업을 중단했습니다({{detail}}). 설정 → 플러그인에서 해당 플러그인을 비활성화한 후 다시 시도하세요.",
       "createFailedPathTooLong": "작업을 만들지 못했습니다. 대상 경로가 {{length}}자로 Windows 제한인 {{limit}}자를 초과합니다. 더 짧은 저장 폴더 경로나 파일 이름을 선택하세요.",
       "parseFailed": "토렌트 파일을 분석하지 못했습니다.",
@@ -1187,6 +1188,7 @@
         "pluginChainAborted": "플러그인 처리 체인이 중단되었습니다: {{cause}}",
         "magnetCleanupQuarantined": "마그넷 메타데이터 정리 작업이 격리되었습니다",
         "muxFailed": "다운로드한 미디어를 합치지 못했습니다",
+        "mediaUndecodable": "비디오 트랙을 디코딩할 수 없습니다. 스트림이 암호화되었거나 스크램블되었을 수 있습니다",
         "pathTooLong": "경로가 {{length}}자입니다. Windows에서는 {{limit}}자까지 허용됩니다"
       },
       "reason": {

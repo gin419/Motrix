@@ -47,6 +47,7 @@ import { urlMatchesHostPermissions } from '@core/plugin/hooks/eligibility'
 import type { PluginHost } from '@core/plugin/host/plugin-host'
 import type { PluginRegistry } from '@core/plugin/plugin-registry'
 import { handleCreateTask } from '@core/task/create-task-handler'
+import { MediaResolveError } from '@core/task/media-resolve-error'
 import { Notifications } from '@motrix/mdxp'
 import {
   BridgeCommands,
@@ -65,6 +66,7 @@ import type { PluginManifest } from '@shared/types/plugin'
 import type { TaskActivityRecorder } from '@shared/types/task-activity'
 import { app, ipcMain } from 'electron'
 import { CancellationTokenSource } from 'vscode-jsonrpc'
+import { z } from 'zod'
 import { registerTrustedIpcHandler } from '../ipc/trusted-ipc'
 import { i18n } from '../lib/i18n'
 import { getPortableProfile } from '../platform/portable-profile'
@@ -88,6 +90,7 @@ import {
 import { recoverDefaultWindowsDesktopBridgeResidue } from './windows-desktop-startup-recovery'
 
 const nativeMessagingLog = getLogger('native-messaging')
+const resolveLog = getLogger('media-resolve')
 
 /**
  * A plugin contributes to the mux pre-resolve seam when it is an enabled
@@ -116,8 +119,14 @@ function contributesResolveCommand(manifest: PluginManifest): boolean {
  * order (builtin origin before community, then by id) until one returns a mux
  * pair. No plugin id is hardcoded — the official host ships zero site knowledge;
  * a community resolver contributes its own hostPermissions once installed.
- * Any resolver error or a non-mux result falls through to the next candidate;
- * an empty candidate set returns null → the direct download proceeds.
+ *
+ * Outcomes:
+ * - empty candidate set, or every candidate returned `null` (an explicit
+ *   decline) → null, and the caller proceeds with the plain download;
+ * - a candidate returns a valid mux result → that result (first one wins);
+ * - otherwise, when at least one candidate threw, timed out, or returned an
+ *   invalid result → throws the first `MediaResolveError`. A URL that a
+ *   resolver claimed must never silently degrade to downloading the page.
  */
 export function makeResolveToMux(
   pluginRegistry: PluginRegistry,
@@ -152,46 +161,79 @@ export function makeResolveToMux(
             : 0
       })
 
+    let firstFailure: MediaResolveError | null = null
     for (const e of candidates) {
       const id = e.manifest.id
-      // Activate + invoke; any failure is non-fatal and falls through to the
-      // next candidate. Pass cookies only when present (e.g. bilibili HD) — a
+      // Activate + invoke; a failure is remembered and the next candidate is
+      // tried. Pass cookies only when present (e.g. bilibili HD) — a
       // resolver whose argsSchema omits `cookies` (additionalProperties:false)
       // must not receive an undefined key, so use a conditional spread.
+      let res: unknown
       try {
         await pluginHost.activate(id)
         const invokeArgs = cookieHeader
           ? { url, cookies: cookieHeader }
           : { url }
-        const res = await pluginHost.invokeCommand(
-          id,
-          `${id}.resolve`,
-          invokeArgs
+        res = await pluginHost.invokeCommand(id, `${id}.resolve`, invokeArgs)
+      } catch (err) {
+        resolveLog.warn(
+          {
+            pluginId: id,
+            host: safeUrlHost(url),
+            err: err instanceof Error ? err.message : String(err),
+          },
+          'site resolver failed'
         )
-        if (
-          res !== null &&
-          typeof res === 'object' &&
-          (res as Record<string, unknown>).kind === 'mux'
-        ) {
-          const r = res as {
-            video: { url: string; headers?: Record<string, string> }
-            audio: { url: string }
-            container?: 'mp4' | 'mkv'
-            title?: string
-          }
-          return {
-            videoUrl: r.video.url,
-            audioUrl: r.audio.url,
-            container: r.container ?? 'mp4',
-            ...(r.video.headers ? { headers: r.video.headers } : {}),
-            ...(r.title ? { title: r.title } : {}),
-          }
-        }
-        // non-mux / null → try the next candidate
-      } catch {
-        // resolver failed → try the next candidate
+        firstFailure ??= new MediaResolveError(id, 'command-failed', err)
+        continue
+      }
+      // null / undefined → the resolver declined this URL; try the next.
+      if (res === null || res === undefined) continue
+      const parsed = muxResolveResultSchema.safeParse(res)
+      if (!parsed.success) {
+        resolveLog.warn(
+          { pluginId: id, host: safeUrlHost(url) },
+          'site resolver returned an unsupported result'
+        )
+        firstFailure ??= new MediaResolveError(id, 'invalid-result')
+        continue
+      }
+      const r = parsed.data
+      return {
+        videoUrl: r.video.url,
+        audioUrl: r.audio.url,
+        container: r.container ?? 'mp4',
+        ...(r.video.headers ? { headers: r.video.headers } : {}),
+        ...(r.title ? { title: r.title } : {}),
       }
     }
+    if (firstFailure) throw firstFailure
+    return null
+  }
+}
+
+/**
+ * The only resolve result shape this host can route today. Plugin output is
+ * untrusted, so it is validated before any field reaches task creation.
+ * Optional fields accept `null` as well as absence: plugin results cross the
+ * QuickJS boundary as JSON-like values, where a missing value is commonly
+ * written as `null` (e.g. `title: data?.title ?? null`).
+ */
+const muxResolveResultSchema = z.object({
+  kind: z.literal('mux'),
+  video: z.object({
+    url: z.string().min(1),
+    headers: z.record(z.string(), z.string()).nullish(),
+  }),
+  audio: z.object({ url: z.string().min(1) }),
+  container: z.enum(['mp4', 'mkv']).nullish(),
+  title: z.string().nullish(),
+})
+
+function safeUrlHost(url: string): string | null {
+  try {
+    return new URL(url).host
+  } catch {
     return null
   }
 }
@@ -267,7 +309,8 @@ export interface BridgeRuntime {
    * The resolveToMux factory (youtube/bilibili → mux pair) used by
    * BridgeReceiver. Exposed so the desktop Add-Task path can call the same
    * resolver without re-constructing it. Always defined when BridgeRuntime is
-   * live; the factory itself returns null for non-resolver URLs.
+   * live; the factory itself returns null for non-resolver URLs and throws
+   * MediaResolveError when a matching resolver fails.
    * The optional cookieHeader arg is forwarded to the plugin for bilibili HD
    * (desktop Add-Task path passes no cookies → ≤480p, by design).
    */

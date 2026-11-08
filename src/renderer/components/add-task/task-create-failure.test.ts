@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  definiteTaskCreateRejection,
   parsePathTooLong,
   parsePluginChainAbort,
   taskCreateFailureReason,
@@ -16,6 +17,40 @@ describe('taskCreateFailureReason', () => {
   it('returns null for a non-Error and for an empty message', () => {
     expect(taskCreateFailureReason('nope')).toBeNull()
     expect(taskCreateFailureReason(new Error('   '))).toBeNull()
+  })
+})
+
+describe('definiteTaskCreateRejection', () => {
+  it('recognizes a media resolve failure from the Electron and web hosts', () => {
+    expect(
+      definiteTaskCreateRejection(
+        new Error(
+          "Error invoking remote method 'command:executeRendererSubmission': Error: task.add.mediaResolveFailed"
+        )
+      )
+    ).toBe('task.add.mediaResolveFailed')
+    expect(
+      definiteTaskCreateRejection(
+        new Error('rpc failed 500: {"error":"task.add.mediaResolveFailed"}')
+      )
+    ).toBe('task.add.mediaResolveFailed')
+  })
+
+  it('leaves lost replies and other failures unconfirmed', () => {
+    expect(
+      definiteTaskCreateRejection(new TypeError('Failed to fetch'))
+    ).toBeNull()
+    expect(
+      definiteTaskCreateRejection(
+        new Error('rpc failed 503: {"error":"engine not ready"}')
+      )
+    ).toBeNull()
+    expect(
+      definiteTaskCreateRejection(new Error('rpc failed 502: <html>'))
+    ).toBeNull()
+    expect(
+      definiteTaskCreateRejection('task.add.mediaResolveFailed')
+    ).toBeNull()
   })
 })
 

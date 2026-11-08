@@ -32,6 +32,7 @@ import { DIRECT_RESOURCE_METADATA_PROFILE } from '../engine/engine-adapter'
 import { verifyBtFiles } from './bt-file-verifier'
 import { parseBtFileLayout } from './bt-storage-layout'
 import { handleCreateTask } from './create-task-handler'
+import { MediaResolveError } from './media-resolve-error'
 
 const sampleTorrentBase64 = storageTorrent([
   { name: 'a', data: 'a' },
@@ -3276,6 +3277,40 @@ describe('handleCreateTask mux pre-resolve seam', () => {
     expect(dispatchMux).not.toHaveBeenCalled()
     expect(probe).toHaveBeenCalledOnce()
     expect(result.gid).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  it('surfaces a matching resolver failure instead of downloading the page over plain HTTP', async () => {
+    const failure = new MediaResolveError(
+      'community.site-resolver',
+      'command-failed',
+      new Error('timed out')
+    )
+    const resolveToMux = vi.fn().mockRejectedValue(failure)
+    const dispatchMux = vi.fn()
+    const deps = makeDeps({ addUriGid: 'gid-html' })
+    const probe = vi.fn()
+    const rejection = handleCreateTask(
+      {
+        type: 'http',
+        uris: ['https://www.site.example/video/1'],
+        saveDir: '/d',
+        headers: [],
+      },
+      {
+        ...deps,
+        resolveToMux,
+        dispatchMux,
+        directResourceValidator: { capture: vi.fn(), probe },
+      }
+    )
+    await expect(rejection).rejects.toBe(failure)
+    await expect(rejection).rejects.toMatchObject({
+      code: ErrorCode.MediaResolveFailed,
+      message: 'task.add.mediaResolveFailed',
+    })
+    expect(dispatchMux).not.toHaveBeenCalled()
+    expect(probe).not.toHaveBeenCalled()
+    expect(deps.addUri).not.toHaveBeenCalled()
   })
 
   it('falls through to HTTP path when resolveToMux and dispatchMux are absent', async () => {

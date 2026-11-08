@@ -1031,6 +1031,7 @@
       "clearSelection": "Bỏ lựa chọn",
       "createFailed": "Không thể tạo tác vụ tải xuống.",
       "createFailedWithReason": "Không thể tạo tác vụ tải xuống: {{reason}}",
+      "mediaResolveFailed": "Tiện ích phân giải trang web không đọc được trang này nên chưa tải xuống. Hãy thử lại sau hoặc cập nhật tiện ích.",
       "createFailedByPlugin": "Không thể tạo tác vụ: tiện ích “{{pluginId}}” đã chặn tác vụ ({{detail}}). Hãy tắt tiện ích đó trong Cài đặt → Tiện ích rồi thử lại.",
       "createFailedPathTooLong": "Không thể tạo tác vụ: đường dẫn đích dài {{length}} ký tự, vượt giới hạn {{limit}} của Windows. Hãy chọn thư mục lưu hoặc tên tệp ngắn hơn.",
       "parseFailed": "Không thể phân tích tệp torrent.",
@@ -1187,6 +1188,7 @@
         "pluginChainAborted": "Chuỗi tiện ích đã bị hủy: {{cause}}",
         "magnetCleanupQuarantined": "Thao tác dọn siêu dữ liệu magnet đã bị cách ly",
         "muxFailed": "Không thể ghép nội dung đa phương tiện đã tải xuống",
+        "mediaUndecodable": "Không thể giải mã rãnh video; luồng có thể đã bị mã hóa hoặc xáo trộn",
         "pathTooLong": "Đường dẫn dài {{length}} ký tự; Windows cho phép {{limit}}"
       },
       "reason": {

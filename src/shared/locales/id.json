@@ -1031,6 +1031,7 @@
       "clearSelection": "Batalkan pilihan",
       "createFailed": "Gagal membuat tugas unduhan.",
       "createFailedWithReason": "Gagal membuat tugas unduhan: {{reason}}",
+      "mediaResolveFailed": "Plugin resolver situs tidak dapat membaca halaman ini, sehingga halaman tidak diunduh. Coba lagi nanti atau perbarui plugin.",
       "createFailedByPlugin": "Tugas tidak dapat dibuat: plugin “{{pluginId}}” menghentikannya ({{detail}}). Nonaktifkan plugin tersebut di Pengaturan → Plugin, lalu coba lagi.",
       "createFailedPathTooLong": "Tugas tidak dapat dibuat: panjang jalur tujuan adalah {{length}} karakter, melebihi batas Windows yaitu {{limit}}. Pilih jalur folder penyimpanan atau nama berkas yang lebih pendek.",
       "parseFailed": "Gagal mengurai berkas torrent.",
@@ -1187,6 +1188,7 @@
         "pluginChainAborted": "Rangkaian plugin dihentikan: {{cause}}",
         "magnetCleanupQuarantined": "Pembersihan metadata magnet dikarantina",
         "muxFailed": "Gagal menggabungkan media yang telah diunduh",
+        "mediaUndecodable": "Trek video tidak dapat didekode; stream mungkin dienkripsi atau diacak",
         "pathTooLong": "Panjang jalur {{length}} karakter; Windows mengizinkan {{limit}}"
       },
       "reason": {

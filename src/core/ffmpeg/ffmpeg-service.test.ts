@@ -164,6 +164,34 @@ describe('FfmpegService', () => {
     }
   )
 
+  it('reports the output duration from the final progress time', async () => {
+    const child = fakeChild()
+    const run = new FfmpegService().run(
+      { ...VIDEO_ONLY_TS_JOB, durationSec: undefined },
+      () => {},
+      (() => child) as never
+    )
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        'out_time_ms=20000000\nprogress=continue\nout_time_ms=1234500000\nprogress=end\n'
+      )
+    )
+    child.emit('close', 0)
+    await expect(run).resolves.toEqual({ outputDurationSec: 1234.5 })
+  })
+
+  it('reports no output duration when ffmpeg printed no progress time', async () => {
+    const child = fakeChild()
+    const run = new FfmpegService().run(
+      VIDEO_ONLY_TS_JOB,
+      () => {},
+      (() => child) as never
+    )
+    child.emit('close', 0)
+    await expect(run).resolves.toEqual({ outputDurationSec: null })
+  })
+
   it('drops overlong lines and ignores output after cancellation', async () => {
     const child = fakeChild()
     const seen: (number | null)[] = []
@@ -280,5 +308,133 @@ describe('muxerForOutputName', () => {
 
   it('is case-insensitive', () => {
     expect(muxerForOutputName('VIDEO.MKV')).toBe('matroska')
+  })
+})
+
+describe('FfmpegService.probeDecode', () => {
+  const job = {
+    binaryPath: 'ffmpeg',
+    input: '/d/out.mp4.motrix',
+    windowSec: 10,
+    timeoutMs: 1000,
+  }
+
+  it('decodes only the first video stream of a bounded window to the null muxer', () => {
+    const args = new FfmpegService().buildDecodeProbeArgs({
+      ...job,
+      startSec: 300,
+    })
+    const joined = args.join(' ')
+    expect(joined).toContain('-v error')
+    expect(joined).toContain('-ss 300 -t 10 -i /d/out.mp4.motrix')
+    expect(joined).toContain('-map 0:v:0')
+    expect(joined).toContain('-f null')
+    expect(args.at(-1)).toBe('-')
+    expect(new FfmpegService().buildDecodeProbeArgs(job)).not.toContain('-ss')
+  })
+
+  it('counts frames from progress output and error lines, expanding repeats', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.stdout.emit('data', Buffer.from('frame=120\nfps=0.0\nprogress=con'))
+    child.stdout.emit('data', Buffer.from('tinue\nframe=250\nprogress=end\n'))
+    child.stderr.emit(
+      'data',
+      Buffer.from(
+        '[h264 @ 0x1] non-existing PPS 0 referenced\n    Last message repeated 4 times\n[h264 @ 0x1] no fr'
+      )
+    )
+    child.stderr.emit('data', Buffer.from('ame!'))
+    child.emit('close', 0)
+    await expect(p).resolves.toEqual({
+      exitCode: 0,
+      frames: 250,
+      errors: 6,
+      noVideoStream: false,
+      decoderUnavailable: false,
+      timedOut: false,
+    })
+  })
+
+  it('flags a decoder that cannot run on this build', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.stderr.emit(
+      'data',
+      Buffer.from(
+        "[av1 @ 0x1] Your platform doesn't support hardware accelerated AV1 decoding.\n" +
+          '[vist#0:0/av1 @ 0x2] [dec:av1 @ 0x3] Error submitting packet to decoder: Function not implemented\n'
+      )
+    )
+    child.emit('close', 69)
+    await expect(p).resolves.toMatchObject({
+      exitCode: 69,
+      frames: 0,
+      errors: 2,
+      decoderUnavailable: true,
+    })
+  })
+
+  it('does not flag ordinary decode errors as an unavailable decoder', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.stderr.emit(
+      'data',
+      Buffer.from(
+        '[av1 @ 0x1] Failed to parse temporal unit.\n[vist#0:0/av1 @ 0x2] [dec:av1 @ 0x3] Error submitting packet to decoder: Invalid data found when processing input\n'
+      )
+    )
+    child.emit('close', 69)
+    await expect(p).resolves.toMatchObject({
+      exitCode: 69,
+      decoderUnavailable: false,
+    })
+  })
+
+  it('flags an input without a video stream', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.stderr.emit(
+      'data',
+      Buffer.from("Stream map '' matches no streams.\n")
+    )
+    child.emit('close', 234)
+    await expect(p).resolves.toMatchObject({
+      exitCode: 234,
+      noVideoStream: true,
+    })
+  })
+
+  it('kills a probe that exceeds its time budget and reports the timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const child = fakeChild()
+      const p = new FfmpegService().probeDecode(
+        job,
+        vi.fn(() => child) as never
+      )
+      vi.advanceTimersByTime(job.timeoutMs)
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL')
+      child.emit('close', null)
+      await expect(p).resolves.toMatchObject({ timedOut: true, exitCode: null })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects when ffmpeg cannot be spawned', async () => {
+    const child = fakeChild()
+    const p = new FfmpegService().probeDecode(job, vi.fn(() => child) as never)
+    child.emit('error', new Error('spawn ffmpeg ENOENT'))
+    await expect(p).rejects.toThrow('decode-probe-failed')
+  })
+
+  it('rejects as aborted when kill() interrupts the probe', async () => {
+    const child = fakeChild()
+    const svc = new FfmpegService()
+    const p = svc.probeDecode(job, vi.fn(() => child) as never)
+    svc.kill()
+    child.emit('close', null)
+    await expect(p).rejects.toThrow('mux-aborted')
   })
 })

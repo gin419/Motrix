@@ -1055,6 +1055,7 @@
       "clearSelection": "Limpar seleção",
       "createFailed": "Não foi possível criar a tarefa de download.",
       "createFailedWithReason": "Não foi possível criar a tarefa de download: {{reason}}",
+      "mediaResolveFailed": "O plugin de resolução do site não conseguiu ler esta página, então ela não foi baixada. Tente novamente mais tarde ou atualize o plugin.",
       "createFailedByPlugin": "Não foi possível criar a tarefa: o plugin “{{pluginId}}” a interrompeu ({{detail}}). Desative esse plugin em Configurações → Plugins e tente novamente.",
       "createFailedPathTooLong": "Não foi possível criar a tarefa: o caminho de destino tem {{length}} caracteres, acima do limite de {{limit}} do Windows. Escolha uma pasta de destino ou um nome de arquivo mais curto.",
       "parseFailed": "Não foi possível analisar o arquivo torrent.",
@@ -1215,6 +1216,7 @@
         "pluginChainAborted": "Cadeia de plugins interrompida: {{cause}}",
         "magnetCleanupQuarantined": "A limpeza dos metadados do magnet está em quarentena",
         "muxFailed": "Não foi possível multiplexar a mídia baixada",
+        "mediaUndecodable": "Não é possível decodificar a faixa de vídeo; o fluxo pode estar criptografado ou embaralhado",
         "pathTooLong": "O caminho tem {{length}} caracteres; o Windows permite {{limit}}"
       },
       "reason": {

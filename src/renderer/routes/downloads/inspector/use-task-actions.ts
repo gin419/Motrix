@@ -1,3 +1,4 @@
+import { definiteTaskCreateRejection } from '@renderer/components/add-task/task-create-failure'
 import { toast } from '@renderer/components/ui/toast'
 import { taskWritesAvailable } from '@renderer/features/application-menu/task-context'
 import {
@@ -515,10 +516,11 @@ export function useTaskActions(
           type: 'success',
         })
       } catch (err) {
+        const rejection = definiteTaskCreateRejection(err)
         toast.add({
           title: t('panel.downloads.action.singleTaskFailed', {
             name: task.name,
-            reason: errMsg(err),
+            reason: rejection ? t(rejection) : errMsg(err),
           }),
           type: 'error',
         })

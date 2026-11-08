@@ -1031,6 +1031,7 @@
       "clearSelection": "清除选择",
       "createFailed": "创建下载任务失败。",
       "createFailedWithReason": "创建下载任务失败：{{reason}}",
+      "mediaResolveFailed": "站点解析插件无法读取此页面，因此未下载。请稍后重试或更新插件。",
       "createFailedByPlugin": "创建任务失败：插件「{{pluginId}}」中断了任务创建（{{detail}}）。可在「设置 → 插件」中停用该插件后重试。",
       "createFailedPathTooLong": "创建任务失败：目标路径长 {{length}} 个字符，超出 Windows 上限 {{limit}}。请改用更短的保存目录或文件名。",
       "parseFailed": "解析种子文件失败。",
@@ -1187,6 +1188,7 @@
         "pluginChainAborted": "插件链已中止：{{cause}}",
         "magnetCleanupQuarantined": "磁力链接元数据清理被隔离",
         "muxFailed": "混流下载的媒体文件失败",
+        "mediaUndecodable": "视频轨道无法解码，流可能已加密或加扰",
         "pathTooLong": "路径长度 {{length}} 个字符，Windows 上限为 {{limit}} 个字符"
       },
       "reason": {

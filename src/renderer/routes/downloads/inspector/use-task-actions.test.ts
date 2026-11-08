@@ -547,6 +547,28 @@ describe('useTaskActions', () => {
     )
   })
 
+  it('onRedownload translates a site resolver failure in its toast', async () => {
+    const task = makeTask({ id: 'comp', status: TaskStatus.Completed })
+    ;(transport.invoke as ReturnType<typeof vi.fn>).mockImplementation(
+      async (channel) => {
+        if (channel === Queries.CheckTaskFileExists) return { exists: false }
+        if (channel === Commands.CreateTask)
+          throw new Error(
+            "Error invoking remote method 'command:executeRendererSubmission': Error: task.add.mediaResolveFailed"
+          )
+        return null
+      }
+    )
+    const { result } = renderHook(() => useTaskActions([task]))
+    await result.current.onRedownload({ alt: false })
+
+    expect(toastAddMock).toHaveBeenCalledWith({
+      title:
+        'sample: The site resolver plugin couldn’t read this page, so it wasn’t downloaded. Try again later or update the plugin.',
+      type: 'error',
+    })
+  })
+
   it('onRedownload warns and falls back to dialog if original credentials expired', async () => {
     // This task requires credentials and cannot be replayed from its URI alone.
     const task = makeTask({

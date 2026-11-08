@@ -392,6 +392,34 @@ describe('AddTaskForm', () => {
     expect(localStorage.getItem('motrix.pending-create-inputs.v1')).toBeNull()
   })
 
+  it('reports a site resolver failure as a definite rejection', async () => {
+    invokeMock.mockImplementation(async (channel) => {
+      if (channel !== Commands.CreateTask) return {}
+      throw new Error(
+        "Error invoking remote method 'command:executeRendererSubmission': Error: task.add.mediaResolveFailed"
+      )
+    })
+    renderForm({
+      defaultValues: {
+        tab: 'links',
+        urls: 'https://www.bilibili.com/video/BV1xx411c7mD',
+        saveDir: '/d',
+      },
+    })
+    await userEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The site resolver plugin couldn’t read this page'
+      )
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent('unconfirmed')
+    expect(mockServices.notify).toHaveBeenCalledWith(
+      'error',
+      'task.add.mediaResolveFailed'
+    )
+    expect(localStorage.getItem('motrix.pending-create-inputs.v1')).toBeNull()
+  })
+
   it('renders links tab by default', () => {
     renderForm()
     expect(screen.getByRole('textbox')).toBeInTheDocument()
