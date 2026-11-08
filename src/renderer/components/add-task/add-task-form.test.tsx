@@ -802,6 +802,45 @@ describe('AddTaskForm', () => {
       ).not.toHaveProperty('mediaResolve')
     })
 
+    it('forgets a page-as-file choice that validation blocked', async () => {
+      let creates = 0
+      serveMedia(() => {
+        creates += 1
+        if (creates === 1)
+          throw new Error(
+            "Error invoking remote method 'command:createTask': Error: task.add.media.unavailable.loginRequired"
+          )
+        return { gid: 'gid-media' }
+      })
+      renderForm({
+        defaultValues: { tab: 'links', urls: page, saveDir: '/d' },
+      })
+      await userEvent.click(screen.getByRole('button', { name: /^download$/i }))
+      const pageAsFile = await screen.findByRole('button', {
+        name: 'Download page as a file',
+      })
+      await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add header' }))
+      await userEvent.type(screen.getByLabelText('Header value'), 'v')
+      await userEvent.click(pageAsFile)
+      expect(
+        await screen.findByText('Add a name for each header with a value.')
+      ).toBeVisible()
+      expect(creates).toBe(1)
+
+      // The user signs in, fixes the form and downloads normally.
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Remove header' })
+      )
+      await userEvent.click(screen.getByRole('button', { name: /^download$/i }))
+      await waitFor(() => expect(creates).toBe(2))
+      expect(
+        invokeMock.mock.calls.filter(
+          ([channel]) => channel === Commands.CreateTask
+        )[1][1]
+      ).not.toHaveProperty('mediaResolve')
+    })
+
     it('never offers protected media as a plain file', async () => {
       serveMedia(() => {
         throw new Error(

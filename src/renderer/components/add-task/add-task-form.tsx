@@ -799,8 +799,14 @@ export function AddTaskForm({
   )
 
   const downloadPagesAsFiles = useCallback(() => {
-    for (const url of pageFileUrls) skipMediaResolve.current.add(url)
-    void form.handleSubmit(onSubmit)()
+    const added = pageFileUrls.filter(
+      (url) => !skipMediaResolve.current.has(url)
+    )
+    for (const url of added) skipMediaResolve.current.add(url)
+    void form.handleSubmit(onSubmit, () => {
+      // Nothing was sent, so a later plain Download resolves the page again.
+      for (const url of added) skipMediaResolve.current.delete(url)
+    })()
   }, [form, onSubmit, pageFileUrls])
 
   const completeMediaPick = useCallback(
