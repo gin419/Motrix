@@ -1202,6 +1202,7 @@
         "pluginChainAborted": "Plugin-Kette abgebrochen: {{cause}}",
         "magnetCleanupQuarantined": "Die Bereinigung der Magnet-Metadaten wurde isoliert und gesperrt",
         "muxFailed": "Die heruntergeladenen Medien konnten nicht zusammengeführt werden",
+        "mediaUndecodable": "Die Videospur kann nicht dekodiert werden; der Stream ist möglicherweise verschlüsselt oder verschleiert",
         "pathTooLong": "Der Pfad ist {{length}} Zeichen lang; Windows erlaubt {{limit}}"
       },
       "reason": {

@@ -1216,6 +1216,7 @@
         "pluginChainAborted": "Catena di plugin interrotta: {{cause}}",
         "magnetCleanupQuarantined": "La pulizia dei metadati magnet è in quarantena",
         "muxFailed": "Impossibile unire i contenuti multimediali scaricati",
+        "mediaUndecodable": "Impossibile decodificare la traccia video; il flusso potrebbe essere cifrato o offuscato",
         "pathTooLong": "Il percorso contiene {{length}} caratteri; Windows ne consente {{limit}}"
       },
       "reason": {

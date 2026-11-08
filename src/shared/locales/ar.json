@@ -3023,6 +3023,7 @@
         "finalizeFailed": "تعذّر إكمال التنزيل: {{cause}}",
         "magnetCleanupQuarantined": "تنظيف بيانات magnet الوصفية موقوف بسبب العزل",
         "muxFailed": "تعذّر دمج الوسائط المنزّلة",
+        "mediaUndecodable": "تعذّر فك ترميز مسار الفيديو؛ قد يكون البث مشفّرًا أو مخلوطًا",
         "pathTooLong": "طول المسار {{length}} حرفًا؛ يسمح Windows بـ {{limit}}",
         "pluginChainAborted": "أُوقفت سلسلة الإضافات: {{cause}}",
         "recoveryFailed": "تعذّرت استعادة التنزيل: {{cause}}",

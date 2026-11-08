@@ -1188,6 +1188,7 @@
         "pluginChainAborted": "外掛程式鏈已中止：{{cause}}",
         "magnetCleanupQuarantined": "Magnet 中繼資料清理作業已隔離",
         "muxFailed": "無法合併已下載的媒體",
+        "mediaUndecodable": "影片軌道無法解碼，串流可能已加密或經過擾碼處理",
         "pathTooLong": "路徑長度 {{length}} 個字元，Windows 上限為 {{limit}} 個字元"
       },
       "reason": {

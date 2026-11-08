@@ -1156,6 +1156,72 @@ describe('MediaTaskCoordinator.start', () => {
     expect(task?.errorDetailKey).toBe('task.error.detail.muxFailed')
   })
 
+  it('fails an output whose video track does not decode and keeps the file on disk', async () => {
+    const rmSpy = vi.spyOn(fs.promises, 'rm').mockResolvedValue(undefined)
+    const scrambledFfmpeg = {
+      ...makeFfmpegFake(),
+      probeDecode: vi.fn(async () => ({
+        exitCode: 0,
+        frames: 250,
+        errors: 181,
+        noVideoStream: false,
+        timedOut: false,
+      })),
+    }
+    const { deps, taskManager } = makeDeps({
+      makeFfmpeg: () =>
+        scrambledFfmpeg as unknown as import('@core/ffmpeg/ffmpeg-service').FfmpegService,
+      mintTaskId: () => 'undecodable-test',
+    })
+
+    await expect(
+      new MediaTaskCoordinator(deps).start(baseJob())
+    ).rejects.toThrow('media-undecodable')
+
+    const task = taskManager.getById('undecodable-test')
+    expect(task?.status).toBe(TaskStatus.Error)
+    expect(task?.errorDetailKey).toBe('task.error.detail.mediaUndecodable')
+    expect(task?.errorMessage).toMatch(/^media-undecodable: 181 decode errors/)
+    expect(scrambledFfmpeg.probeDecode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: path.join('/save', 'video.mp4.motrix'),
+        startSec: 0,
+      })
+    )
+    // The muxed output stays where it was written; nothing renames or
+    // deletes it, and only the redundant segment directory is cleaned.
+    expect(fs.promises.rename).not.toHaveBeenCalled()
+    expect(rmSpy).not.toHaveBeenCalledWith(
+      path.join('/save', 'video.mp4.motrix'),
+      expect.anything()
+    )
+    expect(rmSpy).toHaveBeenCalledWith('/tmp/fake-media-job', {
+      recursive: true,
+      force: true,
+    })
+  })
+
+  it('completes the task when the decode check itself cannot run', async () => {
+    const brokenProbeFfmpeg = {
+      ...makeFfmpegFake(),
+      probeDecode: vi.fn(async () => {
+        throw new Error('decode-probe-failed: spawn ffmpeg ENOENT')
+      }),
+    }
+    const { deps, taskManager } = makeDeps({
+      makeFfmpeg: () =>
+        brokenProbeFfmpeg as unknown as import('@core/ffmpeg/ffmpeg-service').FfmpegService,
+      mintTaskId: () => 'probe-broken-test',
+    })
+
+    await new MediaTaskCoordinator(deps).start(baseJob())
+
+    expect(brokenProbeFfmpeg.probeDecode).toHaveBeenCalledOnce()
+    expect(taskManager.getById('probe-broken-test')?.status).toBe(
+      TaskStatus.Completed
+    )
+  })
+
   it('cancels the sibling stream when one segment downloader fails', async () => {
     const video = makeDownloaderFake({
       error: new Error('segment download failed'),

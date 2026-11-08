@@ -180,8 +180,131 @@ export class FfmpegService {
     })
   }
 
+  buildDecodeProbeArgs(job: DecodeProbeJob): string[] {
+    return [
+      '-hide_banner',
+      '-nostdin',
+      // Only error-level messages reach stderr, so each line is a decode or
+      // demux error rather than banner/info noise.
+      '-v',
+      'error',
+      ...(job.startSec && job.startSec > 0
+        ? ['-ss', String(job.startSec)]
+        : []),
+      '-t',
+      String(job.windowSec),
+      '-i',
+      job.input,
+      '-map',
+      '0:v:0',
+      '-an',
+      '-sn',
+      '-dn',
+      '-f',
+      'null',
+      '-progress',
+      'pipe:1',
+      '-nostats',
+      '-',
+    ]
+  }
+
+  /**
+   * Decode a bounded window of the first video stream to the null muxer and
+   * report how many frames came out and how many error lines ffmpeg logged.
+   * Resolves (never rejects) on a timeout, with `timedOut: true`. Rejects
+   * when the process cannot be spawned or when kill() aborts it.
+   */
+  probeDecode(
+    job: DecodeProbeJob,
+    spawnImpl: SpawnImpl = nodeSpawn as SpawnImpl
+  ): Promise<DecodeProbeResult> {
+    if (this.aborted) return Promise.reject(new Error('mux-aborted'))
+    const child = spawnImpl(job.binaryPath, this.buildDecodeProbeArgs(job))
+    this.child = child
+
+    const MAX_LINE = 4096
+    let errors = 0
+    let noVideoStream = false
+    let stderrPending = ''
+    const acceptStderrLine = (line: string) => {
+      const text = line.trim()
+      if (!text) return
+      // ffmpeg folds identical consecutive messages into one summary line.
+      const repeated = /Last message repeated (\d+) times?/.exec(text)
+      if (repeated) {
+        errors += Number(repeated[1])
+        return
+      }
+      if (text.includes('matches no streams')) noVideoStream = true
+      errors += 1
+    }
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const lines = (stderrPending + chunk.toString()).split(/\r?\n|\r/)
+      stderrPending = (lines.pop() ?? '').slice(-MAX_LINE)
+      for (const line of lines) acceptStderrLine(line)
+    })
+
+    let frames = 0
+    let stdoutPending = ''
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const lines = (stdoutPending + chunk.toString()).split('\n')
+      stdoutPending = (lines.pop() ?? '').slice(-MAX_LINE)
+      for (const line of lines) {
+        const match = /^frame=\s*(\d+)\s*$/.exec(line.trim())
+        if (match) frames = Math.max(frames, Number(match[1]))
+      }
+    })
+
+    return new Promise<DecodeProbeResult>((resolve, reject) => {
+      let settled = false
+      let timedOut = false
+      const timer = setTimeout(() => {
+        timedOut = true
+        child.kill('SIGKILL')
+      }, job.timeoutMs)
+      child.on('error', (err) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        if (this.child === child) this.child = null
+        reject(new Error(`decode-probe-failed: ${err.message}`))
+      })
+      child.on('close', (code) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        if (this.child === child) this.child = null
+        if (this.aborted) return reject(new Error('mux-aborted'))
+        acceptStderrLine(stderrPending)
+        resolve({ exitCode: code, frames, errors, noVideoStream, timedOut })
+      })
+    })
+  }
+
   kill(): void {
     this.aborted = true
     this.child?.kill('SIGKILL')
   }
+}
+
+export interface DecodeProbeJob {
+  binaryPath: string
+  input: string
+  /** Input seek (seconds) before the window; omitted or 0 → file start. */
+  startSec?: number
+  windowSec: number
+  timeoutMs: number
+}
+
+export interface DecodeProbeResult {
+  /** Process exit code; null when it was killed (e.g. on timeout). */
+  exitCode: number | null
+  /** Video frames decoded in the window. */
+  frames: number
+  /** Error-level log lines, with "Last message repeated N times" expanded. */
+  errors: number
+  /** The input has no video stream for `-map 0:v:0` to select. */
+  noVideoStream: boolean
+  timedOut: boolean
 }

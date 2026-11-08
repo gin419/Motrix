@@ -2960,6 +2960,7 @@
         "finalizeFailed": "Impossible de finaliser le téléchargement : {{cause}}",
         "magnetCleanupQuarantined": "Le nettoyage des métadonnées magnet est mis en quarantaine",
         "muxFailed": "Impossible de multiplexer les médias téléchargés",
+        "mediaUndecodable": "La piste vidéo ne peut pas être décodée ; le flux est peut-être chiffré ou brouillé",
         "pathTooLong": "Le chemin contient {{length}} caractères ; Windows en autorise {{limit}}",
         "pluginChainAborted": "Chaîne d’extensions interrompue : {{cause}}",
         "recoveryFailed": "Impossible de récupérer le téléchargement : {{cause}}",

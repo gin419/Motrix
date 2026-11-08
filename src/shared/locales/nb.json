@@ -2939,6 +2939,7 @@
         "finalizeFailed": "Kunne ikke fullføre nedlastingen: {{cause}}",
         "magnetCleanupQuarantined": "Opprydding av magnetmetadata er satt i karantene",
         "muxFailed": "Kunne ikke slå sammen de nedlastede mediene",
+        "mediaUndecodable": "Videosporet kan ikke dekodes; strømmen kan være kryptert eller forvrengt",
         "pathTooLong": "Stien er {{length}} tegn lang; Windows tillater {{limit}}",
         "pluginChainAborted": "Programtilleggskjeden ble avbrutt: {{cause}}",
         "recoveryFailed": "Kunne ikke gjenopprette nedlastingen: {{cause}}",

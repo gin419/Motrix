@@ -2918,6 +2918,7 @@
         "finalizeFailed": "ดำเนินการดาวน์โหลดให้เสร็จไม่ได้: {{cause}}",
         "magnetCleanupQuarantined": "การล้างข้อมูลเมตาของแมกเน็ตถูกกักกันไว้",
         "muxFailed": "รวมสื่อที่ดาวน์โหลดไม่ได้",
+        "mediaUndecodable": "ถอดรหัสแทร็กวิดีโอไม่ได้ สตรีมอาจถูกเข้ารหัสหรือสลับสัญญาณ",
         "pathTooLong": "เส้นทางมี {{length}} อักขระ แต่ Windows อนุญาต {{limit}} อักขระ",
         "pluginChainAborted": "หยุดลำดับการทำงานของปลั๊กอินแล้ว: {{cause}}",
         "recoveryFailed": "กู้คืนการดาวน์โหลดไม่ได้: {{cause}}",

@@ -1202,6 +1202,7 @@
         "pluginChainAborted": "Plugin chain aborted: {{cause}}",
         "magnetCleanupQuarantined": "Magnet metadata cleanup is quarantined",
         "muxFailed": "Failed to mux the downloaded media",
+        "mediaUndecodable": "The video track can’t be decoded; the stream may be encrypted or scrambled",
         "pathTooLong": "The path is {{length}} characters; Windows allows {{limit}}"
       },
       "reason": {

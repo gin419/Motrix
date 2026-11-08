@@ -6,6 +6,7 @@ import type {
   SegmentFileProgress,
   SegmentProgress,
 } from '@core/download/segment-downloader'
+import { checkVideoDecodable } from '@core/ffmpeg/decode-check'
 import {
   type FfmpegService,
   muxerForOutputName,
@@ -780,8 +781,27 @@ export class MediaTaskCoordinator {
         }
       )
 
+      assertActive()
+
+      // Exit code 0 only proves the container was written: `-c copy` happily
+      // remuxes a scrambled or encrypted video track into a grey-screen file.
+      // Decode a bounded window before calling the task complete. state.ffmpeg
+      // stays set so cancel() also kills this probe.
+      const decodeVerdict = await checkVideoDecodable(ffmpeg, {
+        binaryPath: ffmpegBinaryPath,
+        input: diskPath,
+        outputName: finalName,
+        durationSec: job.durationSec,
+      })
       state.ffmpeg = null
       assertActive()
+      log.info({ taskId, verdict: decodeVerdict }, 'media decode check')
+      if (decodeVerdict.status === 'undecodable') {
+        throw new MediaUndecodableError(
+          decodeVerdict.frames,
+          decodeVerdict.errors
+        )
+      }
 
       // -----------------------------------------------------------------------
       // Phase: finalizing → Completed
@@ -857,7 +877,10 @@ export class MediaTaskCoordinator {
           (t) => {
             applyTerminalStatusToTask(t, TaskStatus.Error, {
               errorMessage: mapError(err as Error),
-              errorDetailKey: 'task.error.detail.muxFailed',
+              errorDetailKey:
+                err instanceof MediaUndecodableError
+                  ? 'task.error.detail.mediaUndecodable'
+                  : 'task.error.detail.muxFailed',
               errorDetailParams: null,
             })
           },
@@ -869,7 +892,9 @@ export class MediaTaskCoordinator {
       // — for a mux failure this carries the ffmpeg stderr tail (which input
       // was invalid) — and preserve tmpDir so the bad inputs can be inspected
       // (ffprobe video.* / audio.*). The next *successful* run still cleans up.
-      if (!state.cancelled) {
+      // An undecodable output is itself the evidence and stays on disk at
+      // diskPath, so its source segments are not kept as a second copy.
+      if (!state.cancelled && !(err instanceof MediaUndecodableError)) {
         log.warn(
           { taskId, tmpDir, err: (err as Error).message },
           'media task failed; preserving tmpDir for inspection'
@@ -1168,6 +1193,19 @@ export class MediaTaskCoordinator {
       sourceMeta: job.sourceMeta,
       instances,
     })
+  }
+}
+
+/**
+ * The muxed output exists but its video track does not decode (typically a
+ * scrambled or encrypted stream). The file is left at diskPath for the user.
+ */
+class MediaUndecodableError extends Error {
+  constructor(frames: number, errors: number) {
+    super(
+      `media-undecodable: ${errors} decode errors, ${frames} frames decoded`
+    )
+    this.name = 'MediaUndecodableError'
   }
 }
 

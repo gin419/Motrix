@@ -1188,6 +1188,7 @@
         "pluginChainAborted": "Chuỗi tiện ích đã bị hủy: {{cause}}",
         "magnetCleanupQuarantined": "Thao tác dọn siêu dữ liệu magnet đã bị cách ly",
         "muxFailed": "Không thể ghép nội dung đa phương tiện đã tải xuống",
+        "mediaUndecodable": "Không thể giải mã rãnh video; luồng có thể đã bị mã hóa hoặc xáo trộn",
         "pathTooLong": "Đường dẫn dài {{length}} ký tự; Windows cho phép {{limit}}"
       },
       "reason": {

@@ -1202,6 +1202,7 @@
         "pluginChainAborted": "Eklenti zinciri durduruldu: {{cause}}",
         "magnetCleanupQuarantined": "Başarısız denemeler nedeniyle magnet meta verilerinin temizlenmesi engellendi",
         "muxFailed": "İndirilen medya birleştirilemedi",
+        "mediaUndecodable": "Video parçası çözülemiyor; akış şifrelenmiş veya karıştırılmış olabilir",
         "pathTooLong": "Yol {{length}} karakter uzunluğunda; Windows en fazla {{limit}} karaktere izin veriyor"
       },
       "reason": {

@@ -1188,6 +1188,7 @@
         "pluginChainAborted": "プラグインの処理チェーンが中止されました: {{cause}}",
         "magnetCleanupQuarantined": "マグネットのメタデータ削除処理は隔離されています",
         "muxFailed": "ダウンロードしたメディアを結合できませんでした",
+        "mediaUndecodable": "映像トラックをデコードできません。ストリームが暗号化またはスクランブルされている可能性があります",
         "pathTooLong": "パスは {{length}} 文字です。Windows の上限は {{limit}} 文字です"
       },
       "reason": {

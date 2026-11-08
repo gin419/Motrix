@@ -1188,6 +1188,7 @@
         "pluginChainAborted": "插件链已中止：{{cause}}",
         "magnetCleanupQuarantined": "磁力链接元数据清理被隔离",
         "muxFailed": "混流下载的媒体文件失败",
+        "mediaUndecodable": "视频轨道无法解码，流可能已加密或加扰",
         "pathTooLong": "路径长度 {{length}} 个字符，Windows 上限为 {{limit}} 个字符"
       },
       "reason": {

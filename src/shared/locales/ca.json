@@ -2960,6 +2960,7 @@
         "finalizeFailed": "No s'ha pogut finalitzar la baixada: {{cause}}",
         "magnetCleanupQuarantined": "La neteja de metadades del magnet està en quarantena",
         "muxFailed": "No s'ha pogut combinar el contingut multimèdia baixat",
+        "mediaUndecodable": "No es pot descodificar la pista de vídeo; és possible que el flux estigui xifrat o embrollat",
         "pathTooLong": "El camí té {{length}} caràcters; el Windows en permet {{limit}}",
         "pluginChainAborted": "S'ha interromput la cadena de connectors: {{cause}}",
         "recoveryFailed": "No s'ha pogut recuperar la baixada: {{cause}}",

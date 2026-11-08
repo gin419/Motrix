@@ -2939,6 +2939,7 @@
         "finalizeFailed": "تکمیل دانلود ممکن نشد: {{cause}}",
         "magnetCleanupQuarantined": "پاک‌سازی فرادادهٔ magnet به‌دلیل قرنطینه متوقف شده است",
         "muxFailed": "ترکیب جریان‌های رسانهٔ دانلودشده ناموفق بود",
+        "mediaUndecodable": "رمزگشایی ترک ویدیو ممکن نیست؛ ممکن است جریان رمزگذاری‌شده یا درهم‌ریخته باشد",
         "pathTooLong": "مسیر {{length}} نویسه دارد؛ حد مجاز Windows برابر {{limit}} است",
         "pluginChainAborted": "زنجیرهٔ افزونه‌ها متوقف شد: {{cause}}",
         "recoveryFailed": "بازیابی دانلود ممکن نشد: {{cause}}",

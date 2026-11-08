@@ -2939,6 +2939,7 @@
         "finalizeFailed": "De download kon niet worden afgerond: {{cause}}",
         "magnetCleanupQuarantined": "Het opruimen van magnetmetadata is in quarantaine geplaatst",
         "muxFailed": "De gedownloade media konden niet worden samengevoegd",
+        "mediaUndecodable": "Het videospoor kan niet worden gedecodeerd; de stream is mogelijk versleuteld of vervormd",
         "pathTooLong": "Het pad bevat {{length}} tekens; Windows staat {{limit}} toe",
         "pluginChainAborted": "Plug-inketen afgebroken: {{cause}}",
         "recoveryFailed": "De download kon niet worden hersteld: {{cause}}",

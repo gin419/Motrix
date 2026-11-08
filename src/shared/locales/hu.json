@@ -1202,6 +1202,7 @@
         "pluginChainAborted": "A bővítménylánc megszakadt: {{cause}}",
         "magnetCleanupQuarantined": "A magnet-metaadatok törlése karanténba került",
         "muxFailed": "A letöltött média egyesítése sikertelen",
+        "mediaUndecodable": "A videósáv nem dekódolható; lehet, hogy a stream titkosított vagy összekevert",
         "pathTooLong": "Az elérési út {{length}} karakter hosszú; a Windows legfeljebb {{limit}} karaktert engedélyez"
       },
       "reason": {

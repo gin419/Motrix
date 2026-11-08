@@ -1188,6 +1188,7 @@
         "pluginChainAborted": "Rangkaian plugin dihentikan: {{cause}}",
         "magnetCleanupQuarantined": "Pembersihan metadata magnet dikarantina",
         "muxFailed": "Gagal menggabungkan media yang telah diunduh",
+        "mediaUndecodable": "Trek video tidak dapat didekode; stream mungkin dienkripsi atau diacak",
         "pathTooLong": "Panjang jalur {{length}} karakter; Windows mengizinkan {{limit}}"
       },
       "reason": {

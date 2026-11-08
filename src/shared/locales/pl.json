@@ -1230,6 +1230,7 @@
         "pluginChainAborted": "Przerwano łańcuch wtyczek: {{cause}}",
         "magnetCleanupQuarantined": "Czyszczenie metadanych magnet zostało objęte kwarantanną",
         "muxFailed": "Nie udało się połączyć pobranych strumieni multimedialnych",
+        "mediaUndecodable": "Nie można zdekodować ścieżki wideo; strumień może być zaszyfrowany lub zakłócony",
         "pathTooLong": "Liczba znaków w ścieżce: {{length}}; limit w systemie Windows: {{limit}}"
       },
       "reason": {
