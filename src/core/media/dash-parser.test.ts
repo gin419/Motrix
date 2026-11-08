@@ -364,6 +364,65 @@ describe('parseDash', () => {
       )
     })
 
+    const timelineMpd = (timeline: string, periodDuration = 'PT10S') =>
+      `<?xml version="1.0"?>
+<MPD type="static" xmlns="urn:mpeg:dash:schema:mpd:2011">
+ <Period duration="${periodDuration}">
+  <AdaptationSet mimeType="video/mp4">
+   <SegmentTemplate timescale="1000" startNumber="1" media="s-$Number$.m4s">
+    ${timeline}
+   </SegmentTemplate>
+   <Representation id="v" bandwidth="1"/>
+  </AdaptationSet>
+ </Period>
+</MPD>`
+
+    it.each([
+      [
+        'a huge repeat count',
+        '<SegmentTimeline><S t="0" d="1" r="2000000000"/></SegmentTimeline>',
+      ],
+      [
+        'repeats that add up past the bound',
+        `<SegmentTimeline>${'<S d="1" r="59999"/>'.repeat(2)}</SegmentTimeline>`,
+      ],
+      [
+        'a zero duration filling the period',
+        '<SegmentTimeline><S t="0" d="0" r="-1"/></SegmentTimeline>',
+      ],
+      [
+        'a negative duration',
+        '<SegmentTimeline><S t="0" d="-5" r="3"/></SegmentTimeline>',
+      ],
+      [
+        'a fractional repeat count',
+        '<SegmentTimeline><S t="0" d="1000" r="1.5"/></SegmentTimeline>',
+      ],
+    ])('refuses a timeline with %s before expanding it', (_case, timeline) => {
+      expect(() => parseDash(timelineMpd(timeline), BASE_URL)).toThrow(
+        expect.objectContaining({ code: 'unsupported-master' })
+      )
+    })
+
+    it.each([
+      ['a period billions of segments long', 'duration="1"', 'P99999DT0S'],
+      ['a zero segment duration', 'duration="0"', 'PT10S'],
+      ['a zero timescale', 'duration="1" timescale="0"', 'PT10S'],
+    ])('refuses a duration template with %s', (_case, attrs, period) => {
+      const mpd = `<?xml version="1.0"?>
+<MPD type="static" xmlns="urn:mpeg:dash:schema:mpd:2011">
+ <Period duration="${period}">
+  <AdaptationSet mimeType="video/mp4">
+   <SegmentTemplate ${attrs} startNumber="1" media="s-$Number$.m4s"/>
+   <Representation id="v" bandwidth="1"/>
+  </AdaptationSet>
+ </Period>
+</MPD>`
+      expect(() => parseDash(mpd, BASE_URL)).toThrow(
+        expect.objectContaining({ code: 'unsupported-master' })
+      )
+    })
+
     it('does not throw for static MPD with type="dynamic" on child element (I-1 regression)', () => {
       const { video } = parseDash(STATIC_WITH_DYNAMIC_CHILD_MPD, BASE_URL)
       expect(video.container).toBe('fmp4')

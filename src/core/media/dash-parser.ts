@@ -240,6 +240,28 @@ function parseSegmentTemplateAttrs(tag: string): SegmentTemplateAttrs {
   }
 }
 
+/**
+ * Most segments one representation may expand to: a day of one-second
+ * segments with headroom. The manifest's byte cap does not bound a
+ * timeline's `r` repeats or a duration template's period, so a few hundred
+ * bytes could otherwise make the parser build billions of parts on the
+ * main thread.
+ */
+export const MAX_DASH_SEGMENTS = 100_000
+
+function tooManySegments(): MediaParseError {
+  return new MediaParseError(
+    'unsupported-master',
+    `MPD expands to more than ${MAX_DASH_SEGMENTS} segments`
+  )
+}
+
+function assertPositive(value: number, name: string): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new MediaParseError('unsupported-master', `invalid MPD ${name}`)
+  }
+}
+
 interface SEntry {
   t?: number
   d: number
@@ -275,9 +297,14 @@ function expandTimeline(
   let seq = startNumber
   let idx = 0
 
+  assertPositive(timescale, 'timescale')
   for (let i = 0; i < entries.length; i++) {
     const s = entries[i]
     if (s.t !== undefined) time = s.t
+    assertPositive(s.d, 'segment duration')
+    if (!Number.isInteger(s.r) || s.r < -1) {
+      throw new MediaParseError('unsupported-master', 'invalid MPD repeat')
+    }
 
     let reps: number
     if (s.r >= 0) {
@@ -293,8 +320,9 @@ function expandTimeline(
       } else {
         reps = 0
       }
-      if (reps < 0) reps = 0
+      if (!Number.isFinite(reps) || reps < 0) reps = 0
     }
+    if (parts.length + reps + 1 > MAX_DASH_SEGMENTS) throw tooManySegments()
 
     for (let j = 0; j <= reps; j++) {
       const url = resolveUri(
@@ -351,9 +379,12 @@ function buildSegmentTemplatePlan(
       mpdUrl
     )
   } else if (tmpl.duration !== undefined && periodDurationSec !== undefined) {
+    assertPositive(tmpl.timescale, 'timescale')
+    assertPositive(tmpl.duration, 'segment duration')
     const count = Math.ceil(
       (periodDurationSec * tmpl.timescale) / tmpl.duration
     )
+    if (!(count <= MAX_DASH_SEGMENTS)) throw tooManySegments()
     segments = []
     for (let i = 0; i < count; i++) {
       const number = tmpl.startNumber + i
