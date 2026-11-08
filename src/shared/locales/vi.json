@@ -1080,7 +1080,9 @@
           "busy": "Các trang khác vẫn đang được đọc. Hãy thử lại sau giây lát.",
           "cancelled": "Đã hủy việc đọc trang.",
           "error": "Không thể đọc trang. Hãy thử lại.",
-          "invalidOptions": "Một số tùy chọn tải xuống không hợp lệ. Hãy đóng cửa sổ này, sửa chúng rồi thử lại."
+          "invalidOptions": "Một số tùy chọn tải xuống không hợp lệ. Hãy đóng cửa sổ này, sửa chúng rồi thử lại.",
+          "addingProgress": "Đang thêm… {{done}}/{{total}}",
+          "stop": "Dừng"
         }
       },
       "createFailedByPlugin": "Không thể tạo tác vụ: tiện ích “{{pluginId}}” đã chặn tác vụ ({{detail}}). Hãy tắt tiện ích đó trong Cài đặt → Tiện ích rồi thử lại.",

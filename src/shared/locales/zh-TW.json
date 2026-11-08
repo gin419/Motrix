@@ -1080,7 +1080,9 @@
           "busy": "其他頁面仍在讀取中，請稍後再試。",
           "cancelled": "已取消讀取頁面。",
           "error": "無法讀取頁面，請重試。",
-          "invalidOptions": "部分下載選項無效。請關閉此視窗，修正後再試一次。"
+          "invalidOptions": "部分下載選項無效。請關閉此視窗，修正後再試一次。",
+          "addingProgress": "正在新增… {{done}} / {{total}}",
+          "stop": "停止"
         }
       },
       "createFailedByPlugin": "建立任務失敗：外掛「{{pluginId}}」中斷了任務建立（{{detail}}）。可在「設定 → 外掛」中停用該外掛後重試。",

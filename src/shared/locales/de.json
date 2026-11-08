@@ -1092,7 +1092,9 @@
           "busy": "Andere Seiten werden noch gelesen. Versuche es gleich noch einmal.",
           "cancelled": "Das Lesen der Seite wurde abgebrochen.",
           "error": "Die Seite konnte nicht gelesen werden. Versuche es erneut.",
-          "invalidOptions": "Einige Download-Optionen sind ungültig. Schließe dies, korrigiere sie und versuche es erneut."
+          "invalidOptions": "Einige Download-Optionen sind ungültig. Schließe dies, korrigiere sie und versuche es erneut.",
+          "addingProgress": "{{done}} von {{total}} wird hinzugefügt…",
+          "stop": "Anhalten"
         }
       },
       "createFailedByPlugin": "Die Aufgabe konnte nicht erstellt werden: Das Plugin „{{pluginId}}“ hat sie gestoppt ({{detail}}). Deaktivieren Sie dieses Plugin unter Einstellungen → Plugins und versuchen Sie es erneut.",

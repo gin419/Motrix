@@ -2882,7 +2882,9 @@
           "busy": "Andre sider leses fortsatt. Prøv igjen om et øyeblikk.",
           "cancelled": "Lesingen av siden ble avbrutt.",
           "error": "Kunne ikke lese siden. Prøv igjen.",
-          "invalidOptions": "Noen nedlastingsvalg er ugyldige. Lukk dette, rett dem og prøv igjen."
+          "invalidOptions": "Noen nedlastingsvalg er ugyldige. Lukk dette, rett dem og prøv igjen.",
+          "addingProgress": "Legger til {{done}} av {{total}}…",
+          "stop": "Stopp"
         }
       },
       "created": "Oppgaven er lagt til",

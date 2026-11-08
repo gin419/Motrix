@@ -2902,7 +2902,9 @@
           "busy": "D’autres pages sont encore en cours de lecture. Réessayez dans un instant.",
           "cancelled": "La lecture de la page a été annulée.",
           "error": "Impossible de lire la page. Réessayez.",
-          "invalidOptions": "Certaines options de téléchargement ne sont pas valides. Fermez cette fenêtre, corrigez-les, puis réessayez."
+          "invalidOptions": "Certaines options de téléchargement ne sont pas valides. Fermez cette fenêtre, corrigez-les, puis réessayez.",
+          "addingProgress": "Ajout de {{done}} sur {{total}}…",
+          "stop": "Arrêter"
         }
       },
       "created": "Tâche ajoutée",

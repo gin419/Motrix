@@ -1092,7 +1092,9 @@
           "busy": "Other pages are still being read. Try again in a moment.",
           "cancelled": "Reading the page was cancelled.",
           "error": "Couldn’t read the page. Try again.",
-          "invalidOptions": "Some download options are invalid. Close this, correct them, then try again."
+          "invalidOptions": "Some download options are invalid. Close this, correct them, then try again.",
+          "addingProgress": "Adding {{done}} of {{total}}…",
+          "stop": "Stop"
         }
       },
       "createFailedByPlugin": "Couldn’t create the task: the plugin “{{pluginId}}” stopped it ({{detail}}). Disable that plugin under Settings → Plugins, then try again.",

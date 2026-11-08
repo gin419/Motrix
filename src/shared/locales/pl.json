@@ -1116,7 +1116,9 @@
           "busy": "Inne strony są wciąż odczytywane. Spróbuj ponownie za chwilę.",
           "cancelled": "Anulowano odczytywanie strony.",
           "error": "Nie udało się odczytać strony. Spróbuj ponownie.",
-          "invalidOptions": "Niektóre opcje pobierania są nieprawidłowe. Zamknij to okno, popraw je i spróbuj ponownie."
+          "invalidOptions": "Niektóre opcje pobierania są nieprawidłowe. Zamknij to okno, popraw je i spróbuj ponownie.",
+          "addingProgress": "Dodawanie {{done}} z {{total}}…",
+          "stop": "Zatrzymaj"
         }
       },
       "createFailedByPlugin": "Nie udało się utworzyć zadania: wtyczka „{{pluginId}}” je zatrzymała ({{detail}}). Wyłącz tę wtyczkę w Ustawienia → Wtyczki i spróbuj ponownie.",

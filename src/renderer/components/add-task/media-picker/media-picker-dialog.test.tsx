@@ -456,6 +456,38 @@ describe('MediaPickerDialog', () => {
     })
   })
 
+  it('shows progress and stops a long pick after the current part', async () => {
+    const first = deferred<unknown>()
+    invokeMock.mockImplementation(async (channel: string, request: any) => {
+      if (channel === Commands.ResolveMedia)
+        return { status: 'ok', preview: preview() }
+      if (channel !== Commands.CreateTask) return { cancelled: true }
+      if (request.mediaPick.entryId === 'ep:1') return first.promise
+      return { gid: `gid-${request.mediaPick.entryId}` }
+    })
+    const { onCreated } = renderDialog()
+    await screen.findByText('Sample Series')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Download (3)' }))
+    expect(
+      await screen.findByRole('button', { name: 'Adding 1 of 3…' })
+    ).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    first.resolve({ gid: 'gid-ep:1' })
+    expect(
+      await screen.findByRole('button', { name: 'Download (2)' })
+    ).toBeEnabled()
+    expect(createCalls().map((call) => call.mediaPick?.entryId)).toEqual([
+      'ep:1',
+    ])
+    expect(screen.getByRole('checkbox', { name: 'P2 Episode 2' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'P3 Episode 3' })).toBeChecked()
+    expect(onCreated).not.toHaveBeenCalled()
+    // A part was added, so leaving keeps it.
+    expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled()
+  })
+
   it('loads the qualities of a deferred part when it is picked alone', async () => {
     const loaded = preview({
       entries: [entry(1), entry(2, { variants: [variant('q720', 720)] })],

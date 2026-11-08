@@ -2882,7 +2882,9 @@
           "busy": "Er worden nog andere pagina’s gelezen. Probeer het zo opnieuw.",
           "cancelled": "Het lezen van de pagina is geannuleerd.",
           "error": "Kan de pagina niet lezen. Probeer het opnieuw.",
-          "invalidOptions": "Sommige downloadopties zijn ongeldig. Sluit dit, corrigeer ze en probeer het opnieuw."
+          "invalidOptions": "Sommige downloadopties zijn ongeldig. Sluit dit, corrigeer ze en probeer het opnieuw.",
+          "addingProgress": "{{done}} van {{total}} toevoegen…",
+          "stop": "Stoppen"
         }
       },
       "created": "Taak toegevoegd",

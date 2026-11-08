@@ -1104,7 +1104,9 @@
           "busy": "Altre pagine sono ancora in lettura. Riprova tra un momento.",
           "cancelled": "La lettura della pagina è stata annullata.",
           "error": "Impossibile leggere la pagina. Riprova.",
-          "invalidOptions": "Alcune opzioni di download non sono valide. Chiudi, correggile e riprova."
+          "invalidOptions": "Alcune opzioni di download non sono valide. Chiudi, correggile e riprova.",
+          "addingProgress": "Aggiunta di {{done}} di {{total}}…",
+          "stop": "Interrompi"
         }
       },
       "createFailedByPlugin": "Impossibile creare l’attività: il plugin “{{pluginId}}” l’ha bloccata ({{detail}}). Disattiva il plugin in Impostazioni → Plugin, quindi riprova.",

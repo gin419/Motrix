@@ -1080,7 +1080,9 @@
           "busy": "Halaman lain masih dibaca. Coba lagi sebentar lagi.",
           "cancelled": "Pembacaan halaman dibatalkan.",
           "error": "Tidak dapat membaca halaman. Coba lagi.",
-          "invalidOptions": "Beberapa opsi unduhan tidak valid. Tutup ini, perbaiki opsinya, lalu coba lagi."
+          "invalidOptions": "Beberapa opsi unduhan tidak valid. Tutup ini, perbaiki opsinya, lalu coba lagi.",
+          "addingProgress": "Menambahkan {{done}} dari {{total}}…",
+          "stop": "Hentikan"
         }
       },
       "createFailedByPlugin": "Tugas tidak dapat dibuat: plugin “{{pluginId}}” menghentikannya ({{detail}}). Nonaktifkan plugin tersebut di Pengaturan → Plugin, lalu coba lagi.",

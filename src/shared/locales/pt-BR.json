@@ -1104,7 +1104,9 @@
           "busy": "Outras páginas ainda estão sendo lidas. Tente novamente em instantes.",
           "cancelled": "A leitura da página foi cancelada.",
           "error": "Não foi possível ler a página. Tente novamente.",
-          "invalidOptions": "Algumas opções de download são inválidas. Feche isto, corrija-as e tente novamente."
+          "invalidOptions": "Algumas opções de download são inválidas. Feche isto, corrija-as e tente novamente.",
+          "addingProgress": "Adicionando {{done}} de {{total}}…",
+          "stop": "Parar"
         }
       },
       "createFailedByPlugin": "Não foi possível criar a tarefa: o plugin “{{pluginId}}” a interrompeu ({{detail}}). Desative esse plugin em Configurações → Plugins e tente novamente.",

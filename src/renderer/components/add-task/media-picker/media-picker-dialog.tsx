@@ -462,6 +462,13 @@ function ReadyView({
   )
   const [notice, setNotice] = useState<string | null>(null)
   const unconfirmed = useRef(new Map(opening.unconfirmed))
+  // The part being sent, counted from 1, while a pick is being added.
+  const [progress, setProgress] = useState<{
+    done: number
+    total: number
+  } | null>(null)
+  const [stopping, setStopping] = useState(false)
+  const stopRequested = useRef(false)
 
   // Deferred parts whose qualities came back unavailable can't be picked.
   const blocked = new Map<string, MediaText>()
@@ -511,12 +518,19 @@ function ReadyView({
     }
     setNotice(null)
     setCreating(true)
+    stopRequested.current = false
+    setStopping(false)
     const next = new Map(status)
     const before = createdHere
+    const unsent = new Set(picks.map((entry) => entry.id))
     let ok = 0
     let failed = 0
     try {
-      for (const entry of picks) {
+      for (const [index, entry] of picks.entries()) {
+        // Stop ends the run between parts; the rest stay picked for later.
+        if (stopRequested.current) break
+        unsent.delete(entry.id)
+        setProgress({ done: index + 1, total: picks.length })
         // An unconfirmed part is resent unchanged, whatever the options now.
         const request: HttpTaskCreateRequest = unconfirmed.current.get(
           entry.id
@@ -575,6 +589,8 @@ function ReadyView({
     } finally {
       setStatus(next)
       setCreating(false)
+      setProgress(null)
+      setStopping(false)
       const kept = new Map(unconfirmed.current)
       onSessionChange((current) => ({
         ...current,
@@ -583,9 +599,10 @@ function ReadyView({
       }))
     }
     setSelected(
-      new Set(
-        [...next].filter(([, s]) => s.kind === 'failed').map(([id]) => id)
-      )
+      new Set([
+        ...[...next].filter(([, s]) => s.kind === 'failed').map(([id]) => id),
+        ...unsent,
+      ])
     )
     if (failed === 0 && ok > 0) {
       if (ok + before === 1) platform.notify('info', 'task.add.created')
@@ -593,7 +610,7 @@ function ReadyView({
         platform.notify('info', 'task.add.batchCreated', {
           count: ok + before,
         })
-      onFinish()
+      if (unsent.size === 0) onFinish()
     } else if (ok > 0) {
       platform.notify('warn', 'task.add.createdPartial', { ok, failed })
     }
@@ -709,24 +726,35 @@ function ReadyView({
         </div>
       </div>
       <DialogFooter className="shrink-0">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={creating}
-          onClick={onFinish}
-        >
-          {createdHere > 0 ? t('common.close') : t('common.cancel')}
-        </Button>
+        {creating ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={stopping}
+            onClick={() => {
+              stopRequested.current = true
+              setStopping(true)
+            }}
+          >
+            {t('task.add.media.picker.stop')}
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" onClick={onFinish}>
+            {createdHere > 0 ? t('common.close') : t('common.cancel')}
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"
           disabled={creating || picks.length === 0}
           onClick={() => void create()}
         >
-          {creating
-            ? t('task.add.adding')
-            : t('task.add.media.picker.download', { selected: picks.length })}
+          {progress
+            ? t('task.add.media.picker.addingProgress', progress)
+            : creating
+              ? t('task.add.adding')
+              : t('task.add.media.picker.download', { selected: picks.length })}
         </Button>
       </DialogFooter>
     </>

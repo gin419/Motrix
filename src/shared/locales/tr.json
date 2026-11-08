@@ -1092,7 +1092,9 @@
           "busy": "Diğer sayfalar hâlâ okunuyor. Biraz sonra tekrar deneyin.",
           "cancelled": "Sayfanın okunması iptal edildi.",
           "error": "Sayfa okunamadı. Tekrar deneyin.",
-          "invalidOptions": "Bazı indirme seçenekleri geçersiz. Bunu kapatın, seçenekleri düzeltin ve yeniden deneyin."
+          "invalidOptions": "Bazı indirme seçenekleri geçersiz. Bunu kapatın, seçenekleri düzeltin ve yeniden deneyin.",
+          "addingProgress": "Ekleniyor… {{done}} / {{total}}",
+          "stop": "Durdur"
         }
       },
       "createFailedByPlugin": "Görev oluşturulamadı: “{{pluginId}}” eklentisi işlemi durdurdu ({{detail}}). Ayarlar → Eklentiler bölümünden bu eklentiyi devre dışı bırakıp tekrar deneyin.",
