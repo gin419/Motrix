@@ -59,6 +59,9 @@ export class DirectPipeline {
       .createTask(req, undefined, {
         source: 'bridge',
         sourceMeta: adapted.sourceMeta,
+        // The receiver owns site resolution for extension submits, with the
+        // browser's cookies; the create must not resolve the URL again.
+        skipMediaResolve: true,
         // Even [] requests an isolated task cookie jar in the engine.
         cookies: adapted.cookies,
       })

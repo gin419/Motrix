@@ -3482,6 +3482,23 @@ describe('handleCreateTask site resolution seam', () => {
     }
   )
 
+  it('does not resolve again when the caller already resolved the URL', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        muxVariant('https://cdn.example/v', 'https://cdn.example/a')
+      )
+    )
+    const deps = makeDeps()
+    await handleCreateTask(
+      pageRequest(),
+      { ...deps, mediaResolve, media: fakeMediaTarget() },
+      { source: 'bridge', skipMediaResolve: true }
+    )
+    expect(mediaResolve.resolve).not.toHaveBeenCalled()
+    expect(deps.addUri).toHaveBeenCalledOnce()
+  })
+
   it('falls through to the HTTP path when no resolve service is wired', async () => {
     const deps = makeDeps({ addUriGid: 'gid-fallback' })
     const result = await handleCreateTask(pageRequest(), deps)

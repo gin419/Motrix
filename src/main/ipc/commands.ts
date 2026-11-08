@@ -407,19 +407,12 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
       await waitForTasksReady?.()
     },
     assertEngineReady: () => supervisor.assertReady(),
-    // Desktop paste resolution still runs only while the bridge is running:
-    // with the bridge disabled or not yet started, every URL is declined →
-    // HTTP fallback, as before. A matching resolver that fails throws
-    // MediaResolveError instead, which surfaces as a task-creation error
-    // rather than downloading the page. The desktop path passes no cookies;
-    // only the extension submit path carries browser cookies.
-    mediaResolve: {
-      match: (urls) => mediaResolve.match(urls),
-      resolve: (url, options) =>
-        bridgeManager.current
-          ? mediaResolve.resolve(url, options)
-          : Promise.resolve({ kind: 'declined' }),
-    },
+    // Paste resolution runs at process scope whether or not the browser
+    // bridge is enabled: installed site resolvers resolve pasted pages by
+    // default. A matching resolver that fails throws MediaResolveError,
+    // which surfaces as a task-creation error rather than downloading the
+    // page. The desktop path passes no cookies.
+    mediaResolve,
     // Same process-scoped pipelines and live FFmpeg check as the receiver.
     media,
   }

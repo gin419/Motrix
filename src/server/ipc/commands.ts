@@ -8,6 +8,8 @@ import type { EventBus } from '@core/events/event-bus'
 import type { GeoIPManager } from '@core/geoip/geo-ip-manager'
 import { createUpdateGeoIPDatabaseHandler } from '@core/geoip/update-geo-ip-database'
 import { getLogger } from '@core/logger'
+import type { MediaDispatchTarget } from '@core/media-resolve/dispatch-variant'
+import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
 import { publishEngineRestartRequired } from '@core/notifications/engine-restart-required'
 import type { NotificationCenter } from '@core/notifications/notification-center'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
@@ -161,6 +163,10 @@ export interface ServerCommandContext {
   }
   getMediaSegmentGids?: (taskId: string) => string[]
   cancelMedia?: (taskId: string) => Promise<void>
+  /** Process-scoped site resolution, as in the Electron shell. */
+  mediaResolve: MediaResolveService
+  /** The process media runtime that resolved variants dispatch into. */
+  media: MediaDispatchTarget
   aria2BinaryPath: string
   finalNamePicker: FinalNamePicker
   mediaMetaStore: MediaMetaStore
@@ -317,6 +323,10 @@ export function buildServerCommandHandlers(
     assertEngineReady: () => supervisor.assertReady(),
     prepareSaveDir: (requested: string) =>
       downloadPathPolicy.prepareSaveDir(requested),
+    // Web UI paste resolves pages through installed site resolvers, with or
+    // without the browser bridge, exactly like the desktop shell.
+    mediaResolve: ctx.mediaResolve,
+    media: ctx.media,
   }
 
   const log = getLogger('server:commands')

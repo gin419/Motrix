@@ -120,3 +120,33 @@ export function fakeMediaTarget(ffmpegAvailable = true) {
     isFfmpegAvailable: vi.fn(async () => ffmpegAvailable),
   }
 }
+
+/**
+ * One pasted page and the mux dispatch it must produce. Both shells' command
+ * tests run it through their CreateTask handler, so the Electron and server
+ * wiring cannot drift apart.
+ */
+export function pastedMediaPage() {
+  const page = 'https://video.example/watch/1'
+  const video = 'https://cdn.example/v/1080.m4s'
+  const audio = 'https://cdn.example/a/hi.m4s'
+  return {
+    page,
+    mediaResolve: fakeMediaResolve(
+      mediaResolution(
+        'Example clip',
+        muxVariant(video, audio, { Referer: 'https://video.example/' })
+      )
+    ),
+    media: fakeMediaTarget(),
+    expectedDispatch: {
+      kind: 'mux',
+      videoUrl: video,
+      audioUrl: audio,
+      container: 'mp4',
+      finalName: 'Example clip.mp4',
+      sanitizedHeaders: { Referer: 'https://video.example/' },
+      sourceMeta: null,
+    },
+  }
+}

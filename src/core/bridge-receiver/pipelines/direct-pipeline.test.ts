@@ -118,6 +118,8 @@ describe('DirectPipeline.dispatch', () => {
       source: 'bridge',
       sourceMeta: { kind: 'direct', sessionKey: 'chromium:e' },
       cookies: buildAdapted().cookies,
+      // The receiver already resolved this submit with the browser's cookies.
+      skipMediaResolve: true,
     })
     // Metadata discovery and plugins see the same headers as the engine.
     expect(opts).not.toHaveProperty('extraEngineOptions')

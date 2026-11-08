@@ -1,0 +1,24 @@
+{
+  "manifestVersion": 1,
+  "id": "test.media-resolver",
+  "name": "Media Resolver Test",
+  "version": "1.0.0",
+  "description": "Resolves media.test pages for the site resolution tests",
+  "categories": ["site-resolver"],
+  "engines": { "motrix": ">=2.0.0" },
+  "main": "dist/plugin.js",
+  "permissions": [],
+  "hostPermissions": ["*://*/*", "https://media.test/*"],
+  "activationEvents": ["onCommand:test.media-resolver.resolve"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "test.media-resolver.resolve",
+        "title": "Resolve a media page",
+        "public": true,
+        "argsSchema": { "type": "object" },
+        "resultSchema": { "type": "object" }
+      }
+    ]
+  }
+}

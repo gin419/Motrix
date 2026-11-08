@@ -227,6 +227,11 @@ export interface CreateTaskDeps {
 export interface CreateTaskOptions {
   source?: TaskSource // default 'user'
   sourceMeta?: SourceMeta // default null
+  /**
+   * The caller already ran site resolution for this URL (an extension
+   * submit, with the browser's cookies) or the URL is a resolved stream.
+   */
+  skipMediaResolve?: boolean
   /** Ephemeral credentials; kept out of persisted task records and plugins. */
   cookies?: CreateDownloadParams['cookies']
   /** Engine option dictionary merged into the engine call: header
@@ -771,7 +776,7 @@ async function handleCreateTaskUnderAdmission(
     let mediaNamePlanned = false
     let mediaRewritten = false
     const pageUri = params.uris[0]
-    if (deps.mediaResolve && pageUri) {
+    if (deps.mediaResolve && pageUri && !opts.skipMediaResolve) {
       const picked = await resolveMediaVariant(deps.mediaResolve, pageUri, {
         isFfmpegAvailable: async () =>
           (await deps.media?.isFfmpegAvailable()) ?? false,

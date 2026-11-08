@@ -1,4 +1,5 @@
 import { urlMatchesHostPermissions } from '@core/plugin/hooks/eligibility'
+import { parseHostPermissionPattern } from '@core/plugin/permissions/host-pattern'
 import type { PluginRegistry } from '@core/plugin/plugin-registry'
 import type { PluginManifest } from '@shared/types/plugin'
 
@@ -24,10 +25,22 @@ export function contributesResolveCommand(manifest: PluginManifest): boolean {
 }
 
 /**
+ * A pattern that admits every host: `<all_urls>` or any pattern whose host
+ * is a bare `*`.
+ * Resolution runs on every pasted HTTP URL, so a resolver must name the
+ * sites it handles; a match-all pattern never makes it a candidate. The
+ * same plugin may still use such a pattern for its own HTTP calls.
+ */
+function admitsEveryHost(pattern: string): boolean {
+  return parseHostPermissionPattern(pattern)?.host.kind === 'any'
+}
+
+/**
  * Enabled site resolvers with a resolve command whose manifest
- * hostPermissions admit `url`, in a deterministic order: builtin origin
- * before community, then by id. No plugin id is hardcoded — the host ships
- * no site knowledge; a resolver contributes its own hostPermissions.
+ * hostPermissions — match-all patterns excluded — admit `url`, in a
+ * deterministic order: builtin origin before community, then by id. No
+ * plugin id is hardcoded — the host ships no site knowledge; a resolver
+ * contributes its own hostPermissions.
  */
 export function siteResolverCandidates(
   registry: SiteResolverRegistry,
@@ -40,7 +53,10 @@ export function siteResolverCandidates(
         e.enabled &&
         (e.manifest.categories ?? []).includes('site-resolver') &&
         contributesResolveCommand(e.manifest) &&
-        urlMatchesHostPermissions(e.manifest.hostPermissions, url)
+        urlMatchesHostPermissions(
+          e.manifest.hostPermissions?.filter((p) => !admitsEveryHost(p)),
+          url
+        )
     )
     .sort((a, b) => {
       if (a.origin !== b.origin) return a.origin === 'builtin' ? -1 : 1
