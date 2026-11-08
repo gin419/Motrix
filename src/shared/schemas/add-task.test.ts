@@ -161,6 +161,38 @@ describe('taskCreateRequestSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('carries a media pick, which needs site resolution', () => {
+    const request = {
+      type: 'http',
+      uris: ['https://a/b'],
+      saveDir: '/d',
+      mediaPick: {
+        resolutionId: '00000000-0000-4000-8000-000000000001',
+        entryId: 'p2',
+        variantId: 'hd',
+        saveToFolder: true,
+      },
+    }
+    expect(taskCreateRequestSchema.parse(request)).toMatchObject({
+      mediaPick: request.mediaPick,
+    })
+    for (const invalid of [
+      { ...request, mediaResolve: 'skip' },
+      { ...request, mediaPick: { entryId: 'p2', streamUrl: 'https://cdn/x' } },
+      { ...request, mediaPick: { entryId: '' } },
+    ]) {
+      expect(taskCreateRequestSchema.safeParse(invalid).success).toBe(false)
+    }
+    expect(
+      taskCreateRequestSchema.safeParse({
+        type: 'http',
+        uris: ['https://a/b'],
+        saveDir: '/d',
+        mediaResolve: 'skip',
+      }).success
+    ).toBe(true)
+  })
+
   it('accepts bt request with magnet payload', () => {
     const result = taskCreateRequestSchema.safeParse({
       type: 'bt',

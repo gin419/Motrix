@@ -489,4 +489,44 @@ describe('parseSiteResolveResult', () => {
       'Line one end'
     )
   })
+
+  it('removes control characters and bidi overrides from variant labels and codecs', () => {
+    const source = { kind: 'direct', stream: { url: VIDEO } }
+    const result = parseSiteResolveResult(
+      v1({
+        entries: [
+          {
+            id: 'only',
+            title: 'Only',
+            variants: [
+              {
+                id: 'q360',
+                label: '360p\u202e\u2066p0801',
+                videoCodec: 'avc1\u0007\u0085',
+                audioCodec: '\u2067\u202d',
+                container: 'mp4',
+                source,
+              },
+              {
+                id: 'q720',
+                label: '\u0000\u202e',
+                container: 'mp4',
+                source,
+              },
+            ],
+          },
+        ],
+      })
+    )
+    expect(result.kind).toBe('media')
+    const variants =
+      result.kind === 'media' ? result.resolution.entries[0]?.variants : []
+    expect(variants?.[0]).toMatchObject({
+      label: '360p p0801',
+      videoCodec: 'avc1',
+    })
+    expect(variants?.[0]).not.toHaveProperty('audioCodec')
+    // A label left empty falls back to the variant id.
+    expect(variants?.[1]?.label).toBe('q720')
+  })
 })

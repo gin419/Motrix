@@ -148,6 +148,7 @@ function args(): Parameters<typeof bootstrapBridge>[0] {
     trackAsyncWork: (operation) => operation(),
     mediaResolve: {
       match: () => [],
+      eligibleResolver: () => null,
       resolve: async () => ({ kind: 'declined' }),
     },
   }

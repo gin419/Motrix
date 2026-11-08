@@ -39,6 +39,8 @@ import { v7 as uuidv7 } from 'uuid'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Aria2Adapter } from '../engine/aria2/aria2-adapter'
 import { DIRECT_RESOURCE_METADATA_PROFILE } from '../engine/engine-adapter'
+import { createMediaResolutionStore } from '../media-resolve/resolution-store'
+import { parseSiteResolveResult } from '../media-resolve/site-resolution'
 import { verifyBtFiles } from './bt-file-verifier'
 import { parseBtFileLayout } from './bt-storage-layout'
 import { handleCreateTask } from './create-task-handler'
@@ -3711,6 +3713,247 @@ describe('handleCreateTask site resolution seam', () => {
     )
     expect(mediaResolve.resolve).not.toHaveBeenCalled()
     expect(deps.addUri).toHaveBeenCalledOnce()
+  })
+})
+
+describe('handleCreateTask media picks', () => {
+  const PAGE = 'https://video.example/watch/1'
+  const series = {
+    kind: 'media',
+    schemaVersion: 1,
+    title: 'Series',
+    entries: [
+      {
+        id: 'p1',
+        index: 1,
+        title: 'One',
+        current: true,
+        variants: [
+          {
+            ...muxVariant(
+              'https://cdn.example/p1/v',
+              'https://cdn.example/p1/a'
+            ),
+            id: 'hd',
+          },
+          { ...directVariant('https://cdn.example/p1.mp4'), id: 'sd' },
+        ],
+      },
+      {
+        id: 'p2',
+        index: 2,
+        title: 'Two',
+        variants: [
+          {
+            ...muxVariant(
+              'https://cdn.example/p2/v',
+              'https://cdn.example/p2/a'
+            ),
+            id: 'hd',
+          },
+          { ...directVariant('https://cdn.example/p2.mp4'), id: 'sd' },
+        ],
+      },
+    ],
+  }
+
+  function previewed() {
+    const parsed = parseSiteResolveResult(structuredClone(series))
+    if (parsed.kind !== 'media') throw new Error(parsed.kind)
+    const store = createMediaResolutionStore()
+    const { id } = store.put(
+      {
+        pluginId: FIXTURE_RESOLVER_ID,
+        sourceUrl: PAGE,
+        resolvedAt: 0,
+        resolution: parsed.resolution,
+      },
+      'owner'
+    )
+    return { store, resolutionId: id }
+  }
+
+  const pickRequest = (
+    mediaPick: Record<string, unknown>,
+    extra: Record<string, unknown> = {}
+  ) => ({
+    type: 'http' as const,
+    uris: [PAGE],
+    saveDir: '/d',
+    headers: [],
+    mediaPick,
+    ...extra,
+  })
+
+  it('downloads the page itself when asked to skip site resolution', async () => {
+    const mediaResolve = fakeMediaResolve(series)
+    const deps = makeDeps()
+    await handleCreateTask(
+      {
+        type: 'http',
+        uris: [PAGE],
+        saveDir: '/d',
+        headers: [],
+        mediaResolve: 'skip',
+      },
+      { ...deps, mediaResolve, media: fakeMediaTarget() }
+    )
+    expect(mediaResolve.resolve).not.toHaveBeenCalled()
+    expect(deps.addUri.mock.calls[0]?.[0]).toEqual([PAGE])
+  })
+
+  it('creates the picked part from its preview without resolving the page again', async () => {
+    const { store, resolutionId } = previewed()
+    const mediaResolve = fakeMediaResolve(series)
+    const media = fakeMediaTarget()
+    const deps = makeDeps()
+    const result = await handleCreateTask(
+      pickRequest({ resolutionId, entryId: 'p2', variantId: 'hd' }),
+      { ...deps, mediaResolve, media, mediaResolutions: store }
+    )
+    expect(result.taskId).toBe('mux-task')
+    expect(mediaResolve.resolve).not.toHaveBeenCalled()
+    expect(media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        videoUrl: 'https://cdn.example/p2/v',
+        finalName: 'Series - P2 Two.mp4',
+        saveDir: '/d',
+      })
+    )
+  })
+
+  it('creates one independent task per picked part', async () => {
+    const { store, resolutionId } = previewed()
+    const deps = makeDeps()
+    const withMedia = {
+      ...deps,
+      mediaResolve: fakeMediaResolve(series),
+      media: fakeMediaTarget(),
+      mediaResolutions: store,
+    }
+    await Promise.all(
+      ['p1', 'p2'].map((entryId) =>
+        handleCreateTask(
+          pickRequest(
+            { resolutionId, entryId, variantId: 'sd' },
+            { requestId: uuidv7() }
+          ),
+          withMedia
+        )
+      )
+    )
+    expect(deps.addUri.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([
+        ['https://cdn.example/p1.mp4'],
+        ['https://cdn.example/p2.mp4'],
+      ])
+    )
+    expect(deps.add.mock.calls.map((call) => call[0].name).sort()).toEqual([
+      'Series - P1 One.mp4',
+      'Series - P2 Two.mp4',
+    ])
+  })
+
+  it('saves into a folder named after the collection through the save-directory preflight', async () => {
+    const { store, resolutionId } = previewed()
+    const prepareSaveDir = vi.fn(async (dir: string) => `/allowed${dir}`)
+    const media = fakeMediaTarget()
+    const deps = makeDeps({ prepareSaveDir })
+    await handleCreateTask(
+      pickRequest({ resolutionId, entryId: 'p1', saveToFolder: true }),
+      {
+        ...deps,
+        mediaResolve: fakeMediaResolve(series),
+        media,
+        mediaResolutions: store,
+      }
+    )
+    expect(prepareSaveDir.mock.calls.map(([dir]) => dir)).toEqual([
+      '/d',
+      path.join('/allowed/d', 'Series'),
+    ])
+    expect(media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        saveDir: `/allowed${path.join('/allowed/d', 'Series')}`,
+      })
+    )
+  })
+
+  it('fails the create when the folder escapes the allowed save directories', async () => {
+    const { store, resolutionId } = previewed()
+    const prepareSaveDir = vi.fn(async (dir: string) => {
+      if (dir !== '/d') throw new Error('outside allowed roots')
+      return dir
+    })
+    const media = fakeMediaTarget()
+    const deps = makeDeps({ prepareSaveDir })
+    await expect(
+      handleCreateTask(
+        pickRequest({ resolutionId, entryId: 'p1', saveToFolder: true }),
+        {
+          ...deps,
+          mediaResolve: fakeMediaResolve(series),
+          media,
+          mediaResolutions: store,
+        }
+      )
+    ).rejects.toThrow('outside allowed roots')
+    expect(media.mux.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('answers a re-submitted pick from its receipt without resolving again', async () => {
+    const mediaResolve = fakeMediaResolve(series)
+    const deps = makeDeps()
+    const tasks: DownloadTask[] = []
+    vi.mocked(deps.taskManager.getAll).mockImplementation(() => tasks)
+    deps.add.mockImplementation((task: DownloadTask) => tasks.push(task))
+    const request = pickRequest(
+      { entryId: 'p1', variantId: 'sd' },
+      { requestId: uuidv7() }
+    )
+    const withMedia = { ...deps, mediaResolve, media: fakeMediaTarget() }
+    const first = await handleCreateTask(request, withMedia)
+    const second = await handleCreateTask(request, withMedia)
+    expect(second).toMatchObject({ outcome: 'reused', taskId: first.taskId })
+    expect(mediaResolve.resolve).toHaveBeenCalledOnce()
+    expect(deps.addUri).toHaveBeenCalledOnce()
+    // The same request id with a different pick is a conflict, not a reuse.
+    await expect(
+      handleCreateTask({ ...request, mediaPick: { entryId: 'p2' } }, withMedia)
+    ).rejects.toThrow('Create request ID was reused with different input')
+  })
+
+  it('fails a pick that no longer resolves instead of downloading the page', async () => {
+    const deps = makeDeps()
+    await expect(
+      handleCreateTask(pickRequest({ entryId: 'p1' }), {
+        ...deps,
+        mediaResolve: fakeMediaResolve(null),
+        media: fakeMediaTarget(),
+      })
+    ).rejects.toMatchObject({
+      failure: 'variant-gone',
+      message: 'task.add.media.failure.variantGone',
+    })
+    expect(deps.addUri).not.toHaveBeenCalled()
+  })
+
+  it('rejects a pick that cannot be resolved here', async () => {
+    const deps = makeDeps()
+    await expect(
+      handleCreateTask(pickRequest({ entryId: 'p1' }), deps)
+    ).rejects.toMatchObject({ code: ErrorCode.IpcInvalidPayload })
+    await expect(
+      handleCreateTask(
+        pickRequest({ entryId: 'p1' }, { mediaResolve: 'skip' }),
+        {
+          ...deps,
+          mediaResolve: fakeMediaResolve(series),
+          media: fakeMediaTarget(),
+        }
+      )
+    ).rejects.toMatchObject({ code: ErrorCode.IpcInvalidPayload })
+    expect(deps.addUri).not.toHaveBeenCalled()
   })
 })
 

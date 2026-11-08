@@ -703,6 +703,38 @@ describe('GetPluginCommandGraph handler', () => {
   })
 })
 
+describe('MatchMediaResolvers handler', () => {
+  it('names the installed resolver that claims a pasted URL', async () => {
+    const resolver = {
+      manifest: {
+        id: 'example.media-resolver',
+        name: 'Example resolver',
+        categories: ['site-resolver'],
+        hostPermissions: ['*://*.media.test/*'],
+        contributes: {
+          commands: [{ id: 'example.media-resolver.resolve', public: true }],
+        },
+      },
+      origin: 'community',
+      enabled: true,
+    }
+    const handlers = buildQueryHandlers({
+      pluginRegistry: { entries: () => [resolver] },
+    } as unknown as QueryContext)
+
+    await expect(
+      handlers[Queries.MatchMediaResolvers]?.({
+        urls: ['https://www.media.test/watch/1', 'https://other.test/'],
+      })
+    ).resolves.toEqual({
+      matches: [
+        { pluginId: 'example.media-resolver', pluginName: 'Example resolver' },
+        null,
+      ],
+    })
+  })
+})
+
 describe('GetEngineDiagnostics handler', () => {
   it('returns the diagnostic report produced by the supervisor', async () => {
     const diagnostics = {

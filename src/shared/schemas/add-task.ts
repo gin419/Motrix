@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { MAX_MIRROR_URIS, type SourceFailure } from './download-source'
 import { legacyOptionNamesSchema } from './legacy-import'
 import { infoHashToMagnetUri } from './magnet-input'
+import { mediaPickSchema } from './media-resolution'
 
 const torrentFileSchema = z.object({
   index: z.number().int().nonnegative(),
@@ -87,16 +88,31 @@ export type AddTaskFormValues = z.infer<typeof addTaskFormSchema>
 
 // ── Engine-agnostic request ─────────────────────────────────
 
-const httpTaskRequestSchema = z.object({
-  type: z.literal('http'),
-  requestId: z.uuid().optional(),
-  uris: z.array(z.string()).min(1).max(MAX_MIRROR_URIS),
-  saveDir: z.string().min(1),
-  filename: z.string().optional(),
-  connections: z.number().int().min(1).max(128).optional(),
-  headers: z.array(httpHeaderSchema).default([]),
-  proxy: z.string().optional(),
-})
+const httpTaskRequestSchema = z
+  .object({
+    type: z.literal('http'),
+    requestId: z.uuid().optional(),
+    uris: z.array(z.string()).min(1).max(MAX_MIRROR_URIS),
+    saveDir: z.string().min(1),
+    filename: z.string().optional(),
+    connections: z.number().int().min(1).max(128).optional(),
+    headers: z.array(httpHeaderSchema).default([]),
+    proxy: z.string().optional(),
+    // `skip` downloads the URL itself even when a site resolver claims it
+    // (the explicit "download page as a file").
+    mediaResolve: z.enum(['auto', 'skip']).optional(),
+    // One picked part of a media picker preview; the first URI is its page.
+    mediaPick: mediaPickSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mediaPick && value.mediaResolve === 'skip') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['mediaPick'],
+        message: 'a media pick needs site resolution',
+      })
+    }
+  })
 
 const btTaskRequestSchema = z
   .object({

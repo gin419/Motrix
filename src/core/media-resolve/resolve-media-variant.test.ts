@@ -2,9 +2,11 @@ import { MediaResolveError } from '@core/task/media-resolve-error'
 import { AppError, ErrorCode } from '@shared/errors'
 import { describe, expect, it, vi } from 'vitest'
 import { makeMediaResolveService } from './media-resolve-service'
+import { createMediaResolutionStore } from './resolution-store'
 import {
   type ResolvedMediaVariant,
   resolveMediaVariant,
+  resolvePickedMediaVariant,
 } from './resolve-media-variant'
 
 // Build a fake registry entry shaped like PluginRegistry.entries() rows:
@@ -733,5 +735,267 @@ describe('resolveMediaVariant over versioned results', () => {
     await expect(
       makeResolveToMux(fakeRegistry(site), host)(PAGE)
     ).rejects.toMatchObject({ failure: 'timeout' })
+  })
+})
+
+describe('resolvePickedMediaVariant', () => {
+  const RESOLVER = 'example.media-resolver'
+  const site = () =>
+    plugin({ id: RESOLVER, hostPermissions: ['*://*.media.test/*'] })
+  const variant = (id: string, height: number, entry: string) => ({
+    id,
+    label: `${height}P`,
+    height,
+    container: 'mp4',
+    source: {
+      kind: 'direct',
+      stream: { url: `https://cdn.media.test/${entry}/${id}.mp4` },
+    },
+  })
+  const series = (opts: { deferP2?: boolean; p1Variants?: string[] } = {}) => ({
+    kind: 'media',
+    schemaVersion: 1,
+    title: 'Series',
+    entries: [
+      {
+        id: 'p1',
+        index: 1,
+        title: 'One',
+        current: true,
+        variants: (opts.p1Variants ?? ['v1080', 'v480']).map((id) =>
+          variant(id, Number(id.slice(1)), 'p1')
+        ),
+      },
+      opts.deferP2
+        ? { id: 'p2', index: 2, title: 'Two' }
+        : {
+            id: 'p2',
+            index: 2,
+            title: 'Two',
+            variants: [
+              variant('v1080', 1080, 'p2'),
+              variant('v480', 480, 'p2'),
+            ],
+          },
+    ],
+  })
+
+  function setup(
+    answer: (args: Record<string, unknown>, pluginId: string) => unknown,
+    registry = fakeRegistry(site())
+  ) {
+    const invokeCommand = vi.fn(
+      async (id: string, _cmd: string, args: Record<string, unknown>) =>
+        answer(args, id)
+    )
+    const host = { activate: vi.fn(async () => undefined), invokeCommand }
+    let clock = 1_000_000
+    const service = makeMediaResolveService({
+      registry,
+      host,
+      now: () => clock,
+    })
+    const store = createMediaResolutionStore({ now: () => clock })
+    const preview = async () => {
+      const outcome = await service.resolve(PAGE)
+      if (outcome.kind !== 'resolved') throw new Error(outcome.kind)
+      return store.put(outcome.media, 'owner').id
+    }
+    const pick = (p: Parameters<typeof resolvePickedMediaVariant>[2]) =>
+      resolvePickedMediaVariant(service, PAGE, p, {
+        isFfmpegAvailable: async () => true,
+        store,
+      })
+    return {
+      invokeCommand,
+      store,
+      preview,
+      pick,
+      advance: (ms: number) => {
+        clock += ms
+      },
+    }
+  }
+  const pickedIds = (r: ResolvedMediaVariant) => `${r.entry.id}/${r.variant.id}`
+
+  it('reuses a fresh preview without asking the resolver again', async () => {
+    const t = setup(() => series())
+    const resolutionId = await t.preview()
+    t.invokeCommand.mockClear()
+    const picked = await t.pick({
+      resolutionId,
+      entryId: 'p2',
+      variantId: 'v480',
+    })
+    expect(pickedIds(picked)).toBe('p2/v480')
+    expect(t.invokeCommand).not.toHaveBeenCalled()
+    // Without a variant id, the best one under maxHeight.
+    expect(
+      pickedIds(await t.pick({ resolutionId, entryId: 'p1', maxHeight: 720 }))
+    ).toBe('p1/v480')
+  })
+
+  it('resolves an expired preview again once for concurrent picks and matches stable ids', async () => {
+    const t = setup(() => series())
+    const resolutionId = await t.preview()
+    t.advance(11 * 60_000)
+    t.invokeCommand.mockClear()
+    const picks = await Promise.all([
+      t.pick({ resolutionId, entryId: 'p1', variantId: 'v1080' }),
+      t.pick({ resolutionId, entryId: 'p2', variantId: 'v1080' }),
+    ])
+    expect(picks.map(pickedIds)).toEqual(['p1/v1080', 'p2/v1080'])
+    expect(t.invokeCommand).toHaveBeenCalledOnce()
+    // The refresh is kept for later picks from the same preview.
+    await t.pick({ resolutionId, entryId: 'p2', variantId: 'v480' })
+    expect(t.invokeCommand).toHaveBeenCalledOnce()
+  })
+
+  describe('an expired preview stays with the resolver that answered it', () => {
+    const FIRST = 'example.first-resolver'
+    const SECOND = 'example.second-resolver'
+    const claimants = () => {
+      const first = plugin({
+        id: FIRST,
+        origin: 'builtin',
+        hostPermissions: ['*://*.media.test/*'],
+      })
+      const second = plugin({
+        id: SECOND,
+        hostPermissions: ['*://*.media.test/*'],
+      })
+      return { first, second, registry: fakeRegistry(first, second) }
+    }
+
+    it('refreshes with the second resolver even once the first answers again', async () => {
+      const { registry } = claimants()
+      let firstFails = true
+      const t = setup((_args, pluginId) => {
+        if (pluginId === FIRST && firstFails) throw new Error('timed out')
+        return series()
+      }, registry)
+      const resolutionId = await t.preview()
+      expect(t.store.get(resolutionId)?.media.pluginId).toBe(SECOND)
+      firstFails = false
+      t.advance(11 * 60_000)
+      t.invokeCommand.mockClear()
+      const picked = await t.pick({
+        resolutionId,
+        entryId: 'p1',
+        variantId: 'v1080',
+      })
+      expect(picked.media.pluginId).toBe(SECOND)
+      expect(t.invokeCommand.mock.calls.map(([id]) => id)).toEqual([SECOND])
+      expect(t.store.get(resolutionId)?.media.pluginId).toBe(SECOND)
+    })
+
+    it('fails as variant-gone rather than asking another resolver once the original is disabled', async () => {
+      const { first, registry } = claimants()
+      const t = setup(() => series(), registry)
+      const resolutionId = await t.preview()
+      expect(t.store.get(resolutionId)?.media.pluginId).toBe(FIRST)
+      first.enabled = false
+      t.advance(11 * 60_000)
+      t.invokeCommand.mockClear()
+      await expect(
+        t.pick({ resolutionId, entryId: 'p1', variantId: 'v1080' })
+      ).rejects.toMatchObject({ failure: 'variant-gone', pluginId: FIRST })
+      expect(t.invokeCommand).not.toHaveBeenCalled()
+    })
+  })
+
+  it('fails as variant-gone when a refreshed resolution no longer offers the pick', async () => {
+    let p1Variants = ['v1080', 'v480']
+    const t = setup(() => series({ p1Variants }))
+    const resolutionId = await t.preview()
+    t.advance(11 * 60_000)
+    p1Variants = ['v480']
+    await expect(
+      t.pick({ resolutionId, entryId: 'p1', variantId: 'v1080' })
+    ).rejects.toMatchObject({ failure: 'variant-gone' })
+    await expect(t.pick({ resolutionId, entryId: 'p9' })).rejects.toMatchObject(
+      { failure: 'variant-gone' }
+    )
+  })
+
+  it('resolves the page when the pick names no stored preview', async () => {
+    const t = setup(() => series())
+    const picked = await t.pick({
+      resolutionId: '00000000-0000-4000-8000-000000000009',
+      entryId: 'p2',
+      variantId: 'v480',
+    })
+    expect(pickedIds(picked)).toBe('p2/v480')
+    expect(t.invokeCommand).toHaveBeenCalledExactlyOnceWith(
+      RESOLVER,
+      `${RESOLVER}.resolve`,
+      { url: PAGE },
+      expect.anything()
+    )
+  })
+
+  it('does not reuse a preview of another page', async () => {
+    const t = setup(() => series())
+    const resolutionId = await t.preview()
+    t.invokeCommand.mockClear()
+    const other = 'https://www.media.test/watch/other'
+    await resolvePickedMediaVariant(
+      makeMediaResolveService({
+        registry: fakeRegistry(site()),
+        host: {
+          activate: vi.fn(async () => undefined),
+          invokeCommand: t.invokeCommand,
+        },
+      }),
+      other,
+      { resolutionId, entryId: 'p1' },
+      { isFfmpegAvailable: async () => true, store: t.store }
+    )
+    expect(t.invokeCommand.mock.calls[0]?.[2]).toEqual({ url: other })
+    // The owner's preview of the first page is untouched.
+    expect(t.store.get(resolutionId)?.media.sourceUrl).toBe(PAGE)
+  })
+
+  it('re-checks that the preview’s resolver is still enabled', async () => {
+    const entry = site()
+    const t = setup(() => series(), fakeRegistry(entry))
+    const resolutionId = await t.preview()
+    entry.enabled = false
+    t.invokeCommand.mockClear()
+    await expect(
+      t.pick({ resolutionId, entryId: 'p1', variantId: 'v1080' })
+    ).rejects.toMatchObject({ failure: 'variant-gone', pluginId: RESOLVER })
+    expect(t.invokeCommand).not.toHaveBeenCalled()
+  })
+
+  it('loads a deferred entry once and keeps it in the preview', async () => {
+    const t = setup((args) =>
+      args.entryIds ? series() : series({ deferP2: true })
+    )
+    const resolutionId = await t.preview()
+    t.invokeCommand.mockClear()
+    const picked = await t.pick({
+      resolutionId,
+      entryId: 'p2',
+      variantId: 'v480',
+    })
+    expect(pickedIds(picked)).toBe('p2/v480')
+    expect(t.invokeCommand.mock.calls[0]?.[2]).toEqual({
+      url: PAGE,
+      entryIds: ['p2'],
+    })
+    await t.pick({ resolutionId, entryId: 'p2', variantId: 'v1080' })
+    expect(t.invokeCommand).toHaveBeenCalledOnce()
+  })
+
+  it('reports an entry the resolver now calls unavailable', async () => {
+    const t = setup(() => ({
+      kind: 'unavailable',
+      reason: 'removed',
+    }))
+    await expect(t.pick({ entryId: 'p1' })).rejects.toMatchObject({
+      failure: 'unavailable',
+      reason: 'removed',
+    })
   })
 })

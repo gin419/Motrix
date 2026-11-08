@@ -371,8 +371,8 @@ function keepAllowlistedHeaders(
 /**
  * Admission over a schema-valid resolution, mutating it in place: every URL,
  * mirror and manifest becomes an admitted task source, headers are checked
- * against the allowlist and stripped of hop-by-hop names, and titles lose
- * control characters.
+ * against the allowlist and stripped of hop-by-hop names, and titles,
+ * messages, variant labels and codecs lose control characters.
  */
 function admitResolution(resolution: SiteResolutionV1): string[] {
   const issues: string[] = []
@@ -383,6 +383,7 @@ function admitResolution(resolution: SiteResolutionV1): string[] {
       entry.unavailable.message = sanitizeText(entry.unavailable.message)
     }
     entry.variants?.forEach((variant, variantIndex) => {
+      admitVariantText(variant)
       const base = `entries.${entryIndex}.variants.${variantIndex}.source`
       const source = variant.source
       if (!source) return
@@ -401,6 +402,18 @@ function admitResolution(resolution: SiteResolutionV1): string[] {
     })
   })
   return issues
+}
+
+// Labels and codecs reach the media picker as quality names.
+function admitVariantText(variant: MediaVariant): void {
+  variant.label = sanitizeText(variant.label) || variant.id
+  for (const key of ['videoCodec', 'audioCodec'] as const) {
+    const codec = variant[key]
+    if (codec === undefined) continue
+    const clean = sanitizeText(codec)
+    if (clean) variant[key] = clean
+    else delete variant[key]
+  }
 }
 
 function admitStream(stream: StreamRef, path: string, issues: string[]): void {

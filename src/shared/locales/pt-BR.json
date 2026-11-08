@@ -1072,7 +1072,8 @@
         "failure": {
           "timeout": "O plugin de resolução do site não respondeu a tempo. Tente novamente mais tarde.",
           "noPlayableVariant": "O plugin de resolução do site não encontrou nenhum formato baixável para esta mídia.",
-          "streamUnavailable": "Não foi possível obter o fluxo de mídia escolhido pelo plugin de resolução do site. Tente novamente mais tarde."
+          "streamUnavailable": "Não foi possível obter o fluxo de mídia escolhido pelo plugin de resolução do site. Tente novamente mais tarde.",
+          "variantGone": "O plugin de resolução do site não oferece mais a parte ou a qualidade escolhida. Abra o seletor novamente e escolha outra."
         }
       },
       "createFailedByPlugin": "Não foi possível criar a tarefa: o plugin “{{pluginId}}” a interrompeu ({{detail}}). Desative esse plugin em Configurações → Plugins e tente novamente.",

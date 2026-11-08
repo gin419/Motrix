@@ -1769,6 +1769,63 @@ describe('process-scoped media wiring', () => {
     )
     expect(ctx.rpcClient.addUri).not.toHaveBeenCalled()
   })
+
+  it('previews a page for the window that asked and creates a pick from it', async () => {
+    ipcHandleMock.mockReset()
+    const fixture = pastedMediaPage()
+    const { ctx } = mediaCtx(false, {
+      mediaResolve: fixture.mediaResolve,
+      media: fixture.media,
+    })
+    const dispose = registerCommandHandlers(ctx as unknown as CommandContext)
+    const registered = (channel: string) =>
+      ipcHandleMock.mock.calls.find(([name]) => name === channel)?.[1] as (
+        event: unknown,
+        ...args: unknown[]
+      ) => Promise<unknown>
+    const requestId = '00000000-0000-4000-8000-000000000001'
+    const window = (id: number) => ({
+      sender: { id, isDestroyed: () => false },
+    })
+
+    const result = await registered(Commands.ResolveMedia)(window(7), {
+      requestId,
+      url: fixture.page,
+    })
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      preview: { title: 'Example clip', folderName: 'Example clip' },
+    })
+    expect(JSON.stringify(result)).not.toContain('cdn.example')
+    // Cancelling is scoped to the window that started the resolve.
+    await expect(
+      registered(Commands.CancelMediaResolve)(window(8), { requestId })
+    ).resolves.toEqual({ cancelled: false })
+
+    // A pick from that preview reuses it instead of resolving the page again.
+    const { preview } = result as {
+      preview: { resolutionId: string; defaultEntryId: string }
+    }
+    await registered(Commands.CreateTask)(
+      {},
+      {
+        type: 'http',
+        uris: [fixture.page],
+        saveDir: tmpdir(),
+        headers: [],
+        mediaPick: {
+          resolutionId: preview.resolutionId,
+          entryId: preview.defaultEntryId,
+        },
+      }
+    )
+    expect(fixture.mediaResolve.resolve).toHaveBeenCalledOnce()
+    expect(fixture.media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining(fixture.expectedDispatch)
+    )
+    dispose()
+  })
 })
 
 describe('SetTaskBtTracker handler', () => {

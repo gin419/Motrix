@@ -1048,7 +1048,8 @@
         "failure": {
           "timeout": "Plugin resolver situs tidak merespons tepat waktu. Coba lagi nanti.",
           "noPlayableVariant": "Plugin resolver situs tidak menemukan format media ini yang dapat diunduh.",
-          "streamUnavailable": "Stream media yang dipilih plugin resolver situs tidak dapat diambil. Coba lagi nanti."
+          "streamUnavailable": "Stream media yang dipilih plugin resolver situs tidak dapat diambil. Coba lagi nanti.",
+          "variantGone": "Plugin resolver situs tidak lagi menyediakan bagian atau kualitas yang Anda pilih. Buka pemilih lagi dan pilih yang lain."
         }
       },
       "createFailedByPlugin": "Tugas tidak dapat dibuat: plugin “{{pluginId}}” menghentikannya ({{detail}}). Nonaktifkan plugin tersebut di Pengaturan → Plugin, lalu coba lagi.",

@@ -49,6 +49,8 @@ export function fakeMediaResolve(
   })
   const service: MediaResolveService = {
     match: (urls) => urls.map(() => null),
+    eligibleResolver: (_url, id) =>
+      id === pluginId ? { pluginId, pluginName: 'Example resolver' } : null,
     resolve,
   }
   return Object.assign(service, { resolve })

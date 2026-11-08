@@ -87,6 +87,9 @@ export const Queries = {
   // Consumed by the Media settings card to render the 4-row status table.
   GetFfmpegDetection: 'query:getFfmpegDetection',
   GetFfmpegInstallStatus: 'query:getFfmpegInstallStatus',
+  // Which installed site resolver claims each URL. Registry only; starts no
+  // plugin.
+  MatchMediaResolvers: 'query:matchMediaResolvers',
   // Dashboard
   GetSpeedHistory: 'query:getSpeedHistory',
   GetTransferStats: 'query:getTransferStats',

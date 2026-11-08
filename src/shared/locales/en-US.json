@@ -1060,7 +1060,8 @@
         "failure": {
           "timeout": "The site resolver plugin didn’t respond in time. Try again later.",
           "noPlayableVariant": "The site resolver plugin found no downloadable format for this media.",
-          "streamUnavailable": "The media stream the site resolver plugin chose couldn’t be fetched. Try again later."
+          "streamUnavailable": "The media stream the site resolver plugin chose couldn’t be fetched. Try again later.",
+          "variantGone": "The site resolver plugin no longer offers the part or quality you picked. Open the picker again and choose another."
         }
       },
       "createFailedByPlugin": "Couldn’t create the task: the plugin “{{pluginId}}” stopped it ({{detail}}). Disable that plugin under Settings → Plugins, then try again.",

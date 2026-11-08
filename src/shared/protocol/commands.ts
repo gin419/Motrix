@@ -147,6 +147,11 @@ export const Commands = {
   ExecuteApplicationMenuItem: 'command:executeApplicationMenuItem',
   // Task creation (engine-neutral)
   CreateTask: 'command:createTask',
+  // Site media picker. Commands, not queries: a resolve may run for the
+  // resolver's whole 45 s budget, past the Web transport's query timeout.
+  // Both handlers take the caller's owner principal first.
+  ResolveMedia: 'command:resolveMedia',
+  CancelMediaResolve: 'command:cancelMediaResolve',
   // GeoIP
   UpdateGeoIPDatabase: 'command:updateGeoIPDatabase',
   // Notifications
