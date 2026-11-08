@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { BridgeEventBus } from '@core/bridge/bridge-event-bus'
 import { IdempotencyCache } from '@core/bridge/idempotency-cache'
 import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
@@ -13,6 +14,7 @@ import {
   resolveMediaVariant,
 } from '@core/media-resolve/resolve-media-variant'
 import { MediaResolveError } from '@core/task/media-resolve-error'
+import { pathTooLongError } from '@core/task/path-length'
 import {
   type DownloadSubmitParams,
   ErrorCodes,
@@ -296,6 +298,15 @@ export class BridgeReceiver {
     const finalName = planned
       ? await this.deps.pickName(adapted.saveDir, planned)
       : adapted.finalName
+    // A direct stream is checked again by the create it becomes; a pipeline
+    // writes this name itself.
+    if (variant.source?.kind !== 'direct') {
+      const tooLong = pathTooLongError(
+        [path.join(adapted.saveDir, finalName)],
+        process.platform
+      )
+      if (tooLong) throw tooLong
+    }
     const durationSec = entry.durationSec ?? adapted.sourceMeta.durationSec
     const outcome = await dispatchMediaVariant(
       variant,

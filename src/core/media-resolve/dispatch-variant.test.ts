@@ -148,6 +148,25 @@ describe('planMediaName', () => {
     expect(planMediaName(media('', [only]), only, mux)).toBeNull()
   })
 
+  it('clamps a long title to the filesystem byte limit and keeps the extension', () => {
+    const only = entry({ title: 'x' })
+    // 150 CJK characters: 450 UTF-8 bytes.
+    const planned = planMediaName(media('视'.repeat(150), [only]), only, mux)
+    expect(planned?.endsWith('.mp4')).toBe(true)
+    // Room for ".motrix" and a " (N)" dedup suffix under NAME_MAX.
+    const bytes = Buffer.byteLength(`${planned} (9999).motrix`)
+    expect(bytes).toBeLessThanOrEqual(255)
+  })
+
+  it.each(['CON', 'nul', 'Com1'])(
+    'never plans the Windows device name %s',
+    (title) => {
+      const only = entry({ title: 'x' })
+      const planned = planMediaName(media(title, [only]), only, mux)
+      expect(planned).toBe(`_${title}.mp4`)
+    }
+  )
+
   it('sanitizes characters a filesystem refuses', () => {
     const only = entry({ title: 'x' })
     expect(planMediaName(media('A/B: C?', [only]), only, mux)).toBe(

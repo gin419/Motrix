@@ -36,7 +36,7 @@ import {
 } from '@test-utils/media-resolve'
 import { makeDownloadTask as makeTestTask } from '@test-utils/task'
 import { v7 as uuidv7 } from 'uuid'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Aria2Adapter } from '../engine/aria2/aria2-adapter'
 import { DIRECT_RESOURCE_METADATA_PROFILE } from '../engine/engine-adapter'
 import { verifyBtFiles } from './bt-file-verifier'
@@ -57,6 +57,7 @@ import {
   sanitizeRemoteFilename,
 } from './direct-resource-validator'
 import { FinalNamePickerImpl } from './final-name-picker'
+import { WINDOWS_MAX_PATH } from './path-length'
 
 // Stub directory preparation (and the other `fs.*` calls inadvertently dragged
 // in via TorrentMetaStore) so unit tests don't touch the real
@@ -3357,6 +3358,39 @@ describe('handleCreateTask site resolution seam', () => {
     expect(runBeforeCreateHttp.mock.calls[0]?.[0].filename).toBe('Clip.mp4')
     const options = deps.addUri.mock.calls[0]?.[1] as Record<string, unknown>
     expect(options.out).toBe('Clip.mp4.motrix')
+  })
+
+  describe('on a destination the planned media name makes too long', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    // Fits with the page's one-character name, not with the title.
+    const longDir = `/${'d'.repeat(WINDOWS_MAX_PATH - 40)}`
+    const title = 'T'.repeat(60)
+    beforeEach(() => {
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+    })
+    afterEach(() => {
+      if (platform) Object.defineProperty(process, 'platform', platform)
+    })
+
+    it.each([
+      ['hls', manifestVariant('hls', 'https://cdn.example/master.m3u8')],
+      ['direct', directVariant('https://cdn.example/360.mp4')],
+    ])('rejects a %s variant before dispatch', async (_kind, variant) => {
+      const mediaResolve = fakeMediaResolve(mediaResolution(title, variant))
+      const media = fakeMediaTarget()
+      const deps = makeDeps()
+      await expect(
+        handleCreateTask(
+          { ...pageRequest(), saveDir: longDir },
+          { ...deps, mediaResolve, media }
+        )
+      ).rejects.toMatchObject({
+        code: ErrorCode.TaskPathTooLong,
+        message: expect.stringMatching(/^task path too long: /),
+      })
+      expect(media.hlsDash.dispatch).not.toHaveBeenCalled()
+      expect(deps.addUri).not.toHaveBeenCalled()
+    })
   })
 
   it('prefers a direct variant when FFmpeg is missing', async () => {

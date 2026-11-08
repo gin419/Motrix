@@ -9,6 +9,7 @@ import {
 } from '@core/media-resolve/media-runtime'
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
+import { WINDOWS_MAX_PATH } from '@core/task/path-length'
 import { TaskManager } from '@core/task/task-manager'
 import { ErrorCodes } from '@motrix/mdxp'
 import { Events } from '@shared/protocol/events'
@@ -689,6 +690,29 @@ describe('BridgeReceiver', () => {
         expect(deps.createTask).not.toHaveBeenCalled()
       }
     )
+
+    it('rejects a pipeline variant whose planned name makes the path too long', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+      try {
+        const { deps, receiver } = mediaDeps(
+          mediaResolution(
+            'T'.repeat(60),
+            manifestVariant('hls', 'https://cdn.example/hls')
+          ),
+          {
+            getDefaultSaveDir: () => `/${'d'.repeat(WINDOWS_MAX_PATH - 40)}`,
+          }
+        )
+        const spy = vi.spyOn(mediaOf(deps).hlsDash, 'dispatch')
+        await expect(receiver.handle(directParams, extCtx)).rejects.toThrow(
+          /^task path too long: /
+        )
+        expect(spy).not.toHaveBeenCalled()
+      } finally {
+        if (platform) Object.defineProperty(process, 'platform', platform)
+      }
+    })
 
     it('downloads a resolved direct variant as a direct task without the page cookies', async () => {
       const { deps, receiver } = mediaDeps(

@@ -7,6 +7,7 @@ import {
   sanitizeFilename,
 } from '@core/bridge-receiver/submit-download-adapter'
 import type { CreateRequestReceipt } from '@core/task/create-request-id'
+import { sanitizeRemoteFilename } from '@core/task/direct-resource-validator'
 import type { SourceMeta } from '@shared/types/task'
 import type { ResolvedMedia } from './media-resolve-service'
 import type { MediaRuntime } from './media-runtime'
@@ -121,6 +122,11 @@ function streamUris(stream: StreamRef): string[] {
  *
  * A direct variant keeps a ts container as .ts (the file is saved as is);
  * mux/HLS/DASH output is remuxed to mp4 or mkv.
+ *
+ * The title is untrusted plugin text: the name goes through the same rule
+ * as a URL-derived HTTP name once the extension is on, so it fits the
+ * filesystem's byte limit with room for the incomplete and dedup suffixes,
+ * keeps its extension through truncation, and never names a Windows device.
  */
 export function planMediaName(
   media: ResolvedMedia,
@@ -138,9 +144,12 @@ export function planMediaName(
   }
   const name = sanitizeFilename(base).trim()
   if (!name) return null
+  let withExtension: string
   if (variant.source?.kind === 'direct') {
     const ext = `.${variant.container}`
-    return name.toLowerCase().endsWith(ext) ? name : `${name}${ext}`
+    withExtension = name.toLowerCase().endsWith(ext) ? name : `${name}${ext}`
+  } else {
+    withExtension = ensureMediaExtension(name, variant.container)
   }
-  return ensureMediaExtension(name, variant.container)
+  return sanitizeRemoteFilename(withExtension)
 }

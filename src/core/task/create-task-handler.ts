@@ -106,7 +106,7 @@ import {
 } from './direct-resource-validator'
 import type { FinalNamePicker } from './final-name-picker'
 import { MediaResolveError } from './media-resolve-error'
-import { findPathOverrun } from './path-length'
+import { pathTooLongError } from './path-length'
 import { toTempPath } from './paths'
 import {
   admitDownloadSources,
@@ -655,13 +655,8 @@ async function handleCreateTaskUnderAdmission(
       plannedPaths.push(path.join(finalPath, file.pathInsideRoot))
     }
   }
-  const overrun = findPathOverrun(plannedPaths, process.platform)
-  if (overrun) {
-    throw new AppError(
-      ErrorCode.TaskPathTooLong,
-      `task path too long: ${overrun.length}/${overrun.limit}: ${overrun.path}`
-    )
-  }
+  const tooLong = pathTooLongError(plannedPaths, process.platform)
+  if (tooLong) throw tooLong
 
   // Create the engine's directory before admission so aria2 can persist its
   // torrent metadata. Parsed BT maps payloads from its private metadata
@@ -788,17 +783,24 @@ async function handleCreateTaskUnderAdmission(
         const planned = planMediaName(media, entry, variant)
         const isDirect = variant.source?.kind === 'direct'
         logMediaSelection(taskId, picked)
+        // Dedup runs on the on-disk name, extension included. A direct
+        // variant is re-picked below through the HTTP name path.
+        const mediaFinalName =
+          planned && !isDirect ? await pickHttpFinalName(planned) : finalName
+        // The destination check above ran on the page's name.
+        if (!isDirect) {
+          const tooLong = pathTooLongError(
+            [path.join(effectiveSaveDir, mediaFinalName)],
+            process.platform
+          )
+          if (tooLong) throw tooLong
+        }
         const outcome = await dispatchMediaVariant(
           variant,
           {
             taskId,
             saveDir: effectiveSaveDir,
-            // Dedup runs on the on-disk name, extension included. A direct
-            // variant is re-picked below through the HTTP name path.
-            finalName:
-              planned && !isDirect
-                ? await pickHttpFinalName(planned)
-                : finalName,
+            finalName: mediaFinalName,
             sourceMeta: opts.sourceMeta ?? null,
             ...(opts.receipt ? { receipt: opts.receipt } : {}),
             ...(entry.durationSec !== undefined
@@ -832,6 +834,11 @@ async function handleCreateTaskUnderAdmission(
         if (planned && !req.filename?.trim()) {
           await pickHttpName(planned)
           mediaNamePlanned = true
+          const tooLong = pathTooLongError(
+            [diskPath, finalPath],
+            process.platform
+          )
+          if (tooLong) throw tooLong
         }
       }
     }
