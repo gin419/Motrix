@@ -246,6 +246,7 @@ import { resolvePluginsDir } from './plugin/plugins-dir'
 import { resolveVerifiedFfmpeg } from './plugin/verified-ffmpeg-electron'
 import { createMainProxyApplier } from './proxy/wiring'
 import { QuitController } from './quit/quit-controller'
+import { stopSessionAndEngineLast } from './quit/session-engine-teardown'
 import {
   registerDevShutdownHandler,
   registerTerminationSignalHandlers,
@@ -657,17 +658,18 @@ function performCleanup(): Promise<void> {
     const acceptedWorkDrain = mainProcessWork.stopAndDrain()
     postDeliveryAbortController?.abort()
     await ingressClose
+    // Closing the bridge drains accepted extension handlers, which may still
+    // dispatch media jobs; the process-scoped media runtime is drained after
+    // it. Session and engine stop wait for both (see below).
+    const bridgeAndMediaDrain = safely('bridge', () =>
+      bridgeManager?.stop()
+    ).then(() => safely('media', () => mediaRuntime?.stopAndDrain()))
     const cancellationDrain = Promise.all([
       safely('polling', () => pollingScheduler?.stopAndDrain()),
       safely('completed-engine-tasks', () =>
         completedEngineTaskCleanup?.stopAndDrain()
       ),
-      // Closing the bridge drains accepted extension handlers, which may still
-      // dispatch media jobs. The process-scoped media runtime is drained after
-      // it, while engine RPC and Session persistence are still available.
-      safely('bridge', () => bridgeManager?.stop()).then(() =>
-        safely('media', () => mediaRuntime?.stopAndDrain())
-      ),
+      bridgeAndMediaDrain,
       safely('rpc-notifications', () => {
         for (const unsubscribe of pollingNotificationUnsubscribers.splice(0)) {
           unsubscribe()
@@ -703,15 +705,20 @@ function performCleanup(): Promise<void> {
         await natManager?.stop()
       }),
     ])
-    // Tracker edits pause active tasks while changing bt-tracker. Drain their
-    // unconditional resume compensation while both Session persistence and
-    // engine RPC are still available.
-    await safely('tracker', () => trackerManager?.stopAndDrain())
-    await Promise.all([
-      cancellationDrain,
-      safely('session', () => sessionManager?.stopAndDrain()),
-      safely('engine', () => supervisor?.stop()),
-    ])
+    // Tracker edits pause active tasks while changing bt-tracker; their
+    // unconditional resume compensation, and media cancellation (aria2
+    // segment purge + parent-task persist), both need Session persistence and
+    // engine RPC, so those two stop only after both drains settle.
+    await stopSessionAndEngineLast({
+      dependents: [
+        () => safely('tracker', () => trackerManager?.stopAndDrain()),
+        () => bridgeAndMediaDrain,
+      ],
+      inFlight: cancellationDrain,
+      stopSession: () =>
+        safely('session', () => sessionManager?.stopAndDrain()),
+      stopEngine: () => safely('engine', () => supervisor?.stop()),
+    })
     await safely('finalize-filesystem', async () => {
       const adapter = finalizeFilesystemAdapter
       finalizeFilesystemAdapter = null
