@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { BridgeReceiverError } from '@core/bridge-receiver/errors'
 import { DirectPipeline } from '@core/bridge-receiver/pipelines/direct-pipeline'
 import { SubmitDownloadAdapter } from '@core/bridge-receiver/submit-download-adapter'
 import { initLogger } from '@core/logger'
@@ -24,6 +25,15 @@ import {
   TransitionPhase,
 } from '@shared/types/task'
 import { storageTorrent } from '@test-utils/bt-storage'
+import {
+  directVariant,
+  FIXTURE_RESOLVER_ID,
+  fakeMediaResolve,
+  fakeMediaTarget,
+  manifestVariant,
+  mediaResolution,
+  muxVariant,
+} from '@test-utils/media-resolve'
 import { makeDownloadTask as makeTestTask } from '@test-utils/task'
 import { v7 as uuidv7 } from 'uuid'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -209,10 +219,11 @@ describe('source admission before side effects', () => {
     const { addUri, add } = deps
     const plugin = vi.fn()
     const probe = vi.fn()
-    const resolve = vi.fn()
+    const mediaResolve = fakeMediaResolve(null)
+    const resolve = mediaResolve.resolve
     deps.orchestrator = { runBeforeCreateHttp: plugin } as never
     deps.directResourceValidator = { capture: probe, probe }
-    deps.resolveToMux = resolve
+    deps.mediaResolve = mediaResolve
     await handleCreateTask(
       { ...httpRequest(), uris: ['ftp://example.test/archive.zip'] },
       deps
@@ -2484,11 +2495,10 @@ describe('handleCreateTask plugin-hook chain (Plan C / T15)', () => {
       runBeforeFinalize: vi.fn(),
       runParallel: vi.fn(),
     } as unknown as Deps['orchestrator']
-    const resolveToMux = vi.fn(async () => {
+    const mediaResolve = fakeMediaResolve(() => {
       order.push('mux')
       return null
     })
-    const dispatchMux = vi.fn()
     const probe = vi.fn(async () => {
       order.push('probe')
       return { filename: 'rewritten.exe', validator: null }
@@ -2505,8 +2515,8 @@ describe('handleCreateTask plugin-hook chain (Plan C / T15)', () => {
       {
         ...deps,
         orchestrator,
-        resolveToMux,
-        dispatchMux,
+        mediaResolve,
+        media: fakeMediaTarget(),
         directResourceValidator: { capture: vi.fn(), probe },
       }
     )
@@ -3130,151 +3140,268 @@ describe('handleCreateTask reserved-GID ownership', () => {
   })
 })
 
-describe('handleCreateTask mux pre-resolve seam', () => {
-  it('routes http to dispatchMux (not engine) when resolveToMux returns a mux pair', async () => {
-    const muxPair = {
-      videoUrl: 'https://video.example/v.mp4',
-      audioUrl: 'https://audio.example/a.m4a',
-      container: 'mp4' as const,
-      headers: { 'x-test': 'yes' },
-    }
-    const resolveToMux = vi.fn().mockResolvedValue(muxPair)
-    const dispatchMux = vi.fn().mockResolvedValue({ taskId: 'mux-task-id' })
+describe('handleCreateTask site resolution seam', () => {
+  const PAGE = 'https://video.example/watch/1'
+  const pageRequest = () => ({
+    type: 'http' as const,
+    uris: [PAGE],
+    saveDir: '/d',
+    headers: [],
+  })
+
+  it('routes a mux variant to the media runtime instead of the engine', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        muxVariant('https://cdn.example/v.m4s', 'https://cdn.example/a.m4s', {
+          Referer: 'https://video.example/',
+        })
+      )
+    )
+    const media = fakeMediaTarget()
     const deps = makeDeps()
     const probe = vi.fn()
     const capture = vi.fn()
-    const result = await handleCreateTask(
-      {
-        type: 'http',
-        uris: ['https://www.youtube.com/watch?v=abc'],
-        saveDir: '/d',
-        headers: [],
-      },
-      {
-        ...deps,
-        resolveToMux,
-        dispatchMux,
-        directResourceValidator: { capture, probe },
-      }
-    )
-    // dispatchMux was called, NOT the engine
-    expect(dispatchMux).toHaveBeenCalledOnce()
+    const result = await handleCreateTask(pageRequest(), {
+      ...deps,
+      mediaResolve,
+      media,
+      directResourceValidator: { capture, probe },
+    })
+    expect(mediaResolve.resolve).toHaveBeenCalledExactlyOnceWith(PAGE, {})
     expect(deps.addUri).not.toHaveBeenCalled()
-    // taskId is reused from the mux pipeline result
-    expect(result.taskId).toBe('mux-task-id')
-    // dispatchMux received an AdaptedMux with the mux pair's fields
-    const adapted = dispatchMux.mock.calls[0][0]
-    expect(adapted.kind).toBe('mux')
-    expect(adapted.videoUrl).toBe(muxPair.videoUrl)
-    expect(adapted.audioUrl).toBe(muxPair.audioUrl)
-    expect(adapted.container).toBe('mp4')
+    expect(result.taskId).toBe('mux-task')
+    expect(media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: 'mux',
+        videoUrl: 'https://cdn.example/v.m4s',
+        audioUrl: 'https://cdn.example/a.m4s',
+        container: 'mp4',
+        finalName: 'Clip.mp4',
+        sanitizedHeaders: { Referer: 'https://video.example/' },
+        sourceMeta: null,
+      })
+    )
     expect(probe).not.toHaveBeenCalled()
     expect(capture).not.toHaveBeenCalled()
   })
 
-  it("uses the resolver's title (sanitized) as the mux finalName, not the URL bvid", async () => {
-    const resolveToMux = vi.fn().mockResolvedValue({
-      videoUrl: 'https://v/v.mp4',
-      audioUrl: 'https://a/a.m4a',
-      container: 'mp4' as const,
-      title: '9.9分！风道机箱唯一真神：酷冷 HAF II 500',
+  it.each(['hls', 'dash'] as const)(
+    'routes a %s variant to the HLS/DASH pipeline with the request receipt',
+    async (kind) => {
+      const manifest = `https://cdn.example/${kind}/index`
+      const mediaResolve = fakeMediaResolve(
+        mediaResolution('Clip', manifestVariant(kind, manifest))
+      )
+      const media = fakeMediaTarget()
+      const deps = makeDeps()
+      const requestId = uuidv7()
+      const result = await handleCreateTask(
+        { ...pageRequest(), requestId },
+        { ...deps, mediaResolve, media }
+      )
+      expect(result.taskId).toBe('hls-dash-task')
+      expect(deps.addUri).not.toHaveBeenCalled()
+      expect(media.mux.dispatch).not.toHaveBeenCalled()
+      const adapted = media.hlsDash.dispatch.mock.calls[0]?.[0] as Record<
+        string,
+        unknown
+      >
+      expect(adapted).toMatchObject({
+        kind,
+        manifestUrl: manifest,
+        // An HLS input container; the pipeline remuxes to the .mp4 name.
+        container: kind === 'hls' ? 'ts' : 'mp4',
+        finalName: 'Clip.mp4',
+        sourceMeta: null,
+      })
+      expect(adapted.receipt).toBeDefined()
+    }
+  )
+
+  it('downloads a direct variant through the HTTP path with its headers and planned name', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip: part/1',
+        directVariant('https://cdn.example/360.mp4', {
+          mirrors: ['https://mirror.example/360.mp4'],
+          headers: { Referer: 'https://video.example/', 'User-Agent': 'UA/1' },
+        })
+      )
+    )
+    const media = fakeMediaTarget()
+    const deps = makeDeps()
+    const probe = vi.fn()
+    await handleCreateTask(pageRequest(), {
+      ...deps,
+      mediaResolve,
+      media,
+      directResourceValidator: { capture: vi.fn(), probe },
     })
-    const dispatchMux = vi.fn().mockResolvedValue({ taskId: 't' })
+    expect(media.mux.dispatch).not.toHaveBeenCalled()
+    expect(media.hlsDash.dispatch).not.toHaveBeenCalled()
+    // The planned name wins over the CDN basename and any probe result.
+    expect(probe).not.toHaveBeenCalled()
+    const [uris, options] = deps.addUri.mock.calls[0] as [
+      string[],
+      Record<string, unknown>,
+    ]
+    expect(uris).toEqual([
+      'https://cdn.example/360.mp4',
+      'https://mirror.example/360.mp4',
+    ])
+    expect(options.out).toBe('Clip_ part_1.mp4.motrix')
+    expect(options['user-agent']).toBe('UA/1')
+    expect(options.header).toContain('Referer: https://video.example/')
+    expect(
+      (options.header as string[]).some((h) => /^user-agent:/i.test(h))
+    ).toBe(false)
+    expect(lastAddedTask(deps).uris).toEqual(uris)
+  })
+
+  it('lets a header the user supplied override the stream header', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        directVariant('https://cdn.example/360.mp4', {
+          headers: { Referer: 'https://video.example/' },
+        })
+      )
+    )
     const deps = makeDeps()
     await handleCreateTask(
       {
-        type: 'http',
-        uris: ['https://www.bilibili.com/video/BV14vJg6ZEd4/'],
-        saveDir: '/d',
-        headers: [],
+        ...pageRequest(),
+        headers: [{ name: 'referer', value: 'https://user.example/' }],
+        filename: 'mine.mp4',
       },
-      { ...deps, resolveToMux, dispatchMux }
+      { ...deps, mediaResolve, media: fakeMediaTarget() }
     )
-    const adapted = dispatchMux.mock.calls[0][0]
-    // Full-width ！/： are not filesystem-illegal, so they survive. The point:
-    // the human title is used, NOT the meaningless "BV14vJg6ZEd4" bvid — and
-    // the container extension is appended BEFORE the dedup pick so the picked
-    // name is the on-disk name.
-    expect(adapted.finalName).toBe(
-      '9.9分！风道机箱唯一真神：酷冷 HAF II 500.mp4'
-    )
+    const options = deps.addUri.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(options.header).toContain('referer: https://user.example/')
+    expect(options.header).not.toContain('Referer: https://video.example/')
+    // A manual name stays authoritative.
+    expect(options.out).toBe('mine.mp4.motrix')
   })
 
-  it('replaces filesystem-illegal characters in the resolver title', async () => {
-    const resolveToMux = vi.fn().mockResolvedValue({
-      videoUrl: 'https://v/v.mp4',
-      audioUrl: 'https://a/a.m4a',
-      container: 'mp4' as const,
-      title: 'A/B: C? "D" <E>',
-    })
-    const dispatchMux = vi.fn().mockResolvedValue({ taskId: 't' })
+  it('prefers a direct variant when FFmpeg is missing', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        manifestVariant('hls', 'https://cdn.example/master.m3u8'),
+        directVariant('https://cdn.example/360.mp4')
+      )
+    )
+    const media = fakeMediaTarget(false)
     const deps = makeDeps()
-    await handleCreateTask(
-      {
-        type: 'http',
-        uris: ['https://www.bilibili.com/video/BV14vJg6ZEd4/'],
-        saveDir: '/d',
-        headers: [],
-      },
-      { ...deps, resolveToMux, dispatchMux }
-    )
-    const adapted = dispatchMux.mock.calls[0][0]
-    expect(adapted.finalName).toBe('A_B_ C_ _D_ _E_.mp4')
+    await handleCreateTask(pageRequest(), { ...deps, mediaResolve, media })
+    expect(media.hlsDash.dispatch).not.toHaveBeenCalled()
+    expect(deps.addUri.mock.calls[0]?.[0]).toEqual([
+      'https://cdn.example/360.mp4',
+    ])
   })
 
-  it('reuses the computed taskId when dispatching via mux', async () => {
-    const resolveToMux = vi.fn().mockResolvedValue({
-      videoUrl: 'https://v.example/v',
-      audioUrl: 'https://a.example/a',
-      container: 'mp4' as const,
-    })
-    let capturedTaskId: string | undefined
-    const dispatchMux = vi.fn().mockImplementation(async (adapted) => {
-      capturedTaskId = adapted.taskId
-      return { taskId: adapted.taskId }
-    })
+  it('fails with ffmpeg-required when every variant needs FFmpeg and it is missing', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        muxVariant('https://cdn.example/v.m4s', 'https://cdn.example/a.m4s')
+      )
+    )
+    const media = fakeMediaTarget(false)
     const deps = makeDeps()
-    const result = await handleCreateTask(
-      {
-        type: 'http',
-        uris: ['https://www.youtube.com/watch?v=xyz'],
-        saveDir: '/d',
-        headers: [],
-      },
-      { ...deps, resolveToMux, dispatchMux }
-    )
-    expect(capturedTaskId).toBe(result.taskId)
-    expect(typeof capturedTaskId).toBe('string')
+    await expect(
+      handleCreateTask(pageRequest(), { ...deps, mediaResolve, media })
+    ).rejects.toMatchObject({
+      code: ErrorCode.MediaResolveFailed,
+      failure: 'ffmpeg-required',
+    })
+    expect(media.mux.dispatch).not.toHaveBeenCalled()
+    expect(deps.addUri).not.toHaveBeenCalled()
   })
 
-  it('falls through to the normal HTTP path (engine.createDownload) when resolveToMux returns null', async () => {
-    let muxFinished = false
-    const resolveToMux = vi.fn(async () => {
-      muxFinished = true
+  it('reports FFmpeg that vanished before dispatch as ffmpeg-required', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        muxVariant('https://cdn.example/v.m4s', 'https://cdn.example/a.m4s')
+      )
+    )
+    const media = fakeMediaTarget()
+    media.mux.dispatch.mockRejectedValue(
+      new BridgeReceiverError('unsupported-kind', 'ffmpeg is unavailable')
+    )
+    await expect(
+      handleCreateTask(pageRequest(), { ...makeDeps(), mediaResolve, media })
+    ).rejects.toMatchObject({
+      pluginId: FIXTURE_RESOLVER_ID,
+      failure: 'ffmpeg-required',
+    })
+  })
+
+  it("uses the resolver's title (sanitized) as the media finalName", async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'A/B: C? "D" <E>',
+        muxVariant('https://cdn.example/v', 'https://cdn.example/a')
+      )
+    )
+    const media = fakeMediaTarget()
+    await handleCreateTask(pageRequest(), {
+      ...makeDeps(),
+      mediaResolve,
+      media,
+    })
+    expect(media.mux.dispatch.mock.calls[0]?.[0]).toMatchObject({
+      finalName: 'A_B_ C_ _D_ _E_.mp4',
+    })
+  })
+
+  it('reuses the computed taskId when dispatching to the media runtime', async () => {
+    const mediaResolve = fakeMediaResolve(
+      mediaResolution(
+        'Clip',
+        muxVariant('https://cdn.example/v', 'https://cdn.example/a')
+      )
+    )
+    const media = fakeMediaTarget()
+    media.mux.dispatch.mockImplementation(async (adapted: unknown) => ({
+      taskId: (adapted as { taskId: string }).taskId,
+    }))
+    const result = await handleCreateTask(pageRequest(), {
+      ...makeDeps(),
+      mediaResolve,
+      media,
+    })
+    expect(typeof result.taskId).toBe('string')
+    expect(media.mux.dispatch.mock.calls[0]?.[0]).toMatchObject({
+      taskId: result.taskId,
+    })
+  })
+
+  it('falls through to the normal HTTP path when no resolver claims the URL', async () => {
+    let resolveFinished = false
+    const mediaResolve = fakeMediaResolve(() => {
+      resolveFinished = true
       return null
     })
-    const dispatchMux = vi.fn()
+    const media = fakeMediaTarget()
     const deps = makeDeps({ addUriGid: 'gid-http' })
     const probe = vi.fn(async () => {
-      expect(muxFinished).toBe(true)
+      expect(resolveFinished).toBe(true)
       return { filename: 'release.zip', validator: null }
     })
     const result = await handleCreateTask(
-      {
-        type: 'http',
-        uris: ['https://example.com/file.zip'],
-        saveDir: '/d',
-        headers: [],
-      },
+      { ...pageRequest(), uris: ['https://example.com/file.zip'] },
       {
         ...deps,
-        resolveToMux,
-        dispatchMux,
+        mediaResolve,
+        media,
         directResourceValidator: { capture: vi.fn(), probe },
       }
     )
     expect(deps.addUri).toHaveBeenCalledOnce()
-    expect(dispatchMux).not.toHaveBeenCalled()
+    expect(media.isFfmpegAvailable).not.toHaveBeenCalled()
     expect(probe).toHaveBeenCalledOnce()
     expect(result.gid).toMatch(/^[0-9a-f]{16}$/)
   })
@@ -3285,52 +3412,37 @@ describe('handleCreateTask mux pre-resolve seam', () => {
       'command-failed',
       new Error('timed out')
     )
-    const resolveToMux = vi.fn().mockRejectedValue(failure)
-    const dispatchMux = vi.fn()
+    const mediaResolve = fakeMediaResolve(() => {
+      throw failure
+    })
+    const media = fakeMediaTarget()
     const deps = makeDeps({ addUriGid: 'gid-html' })
     const probe = vi.fn()
-    const rejection = handleCreateTask(
-      {
-        type: 'http',
-        uris: ['https://www.site.example/video/1'],
-        saveDir: '/d',
-        headers: [],
-      },
-      {
-        ...deps,
-        resolveToMux,
-        dispatchMux,
-        directResourceValidator: { capture: vi.fn(), probe },
-      }
-    )
+    const rejection = handleCreateTask(pageRequest(), {
+      ...deps,
+      mediaResolve,
+      media,
+      directResourceValidator: { capture: vi.fn(), probe },
+    })
     await expect(rejection).rejects.toBe(failure)
     await expect(rejection).rejects.toMatchObject({
       code: ErrorCode.MediaResolveFailed,
       message: 'task.add.mediaResolveFailed',
     })
-    expect(dispatchMux).not.toHaveBeenCalled()
+    expect(media.mux.dispatch).not.toHaveBeenCalled()
     expect(probe).not.toHaveBeenCalled()
     expect(deps.addUri).not.toHaveBeenCalled()
   })
 
-  it('falls through to HTTP path when resolveToMux and dispatchMux are absent', async () => {
+  it('falls through to the HTTP path when no resolve service is wired', async () => {
     const deps = makeDeps({ addUriGid: 'gid-fallback' })
-    const result = await handleCreateTask(
-      {
-        type: 'http',
-        uris: ['https://www.youtube.com/watch?v=test'],
-        saveDir: '/d',
-        headers: [],
-      },
-      deps
-    )
+    const result = await handleCreateTask(pageRequest(), deps)
     expect(deps.addUri).toHaveBeenCalledOnce()
     expect(result.gid).toMatch(/^[0-9a-f]{16}$/)
   })
 
-  it('never calls resolveToMux for magnet/bt requests', async () => {
-    const resolveToMux = vi.fn().mockResolvedValue(null)
-    const dispatchMux = vi.fn()
+  it('never resolves magnet/bt requests', async () => {
+    const mediaResolve = fakeMediaResolve(null)
     const deps = makeDeps({ addUriGid: 'gid-m' })
     await handleCreateTask(
       {
@@ -3342,10 +3454,9 @@ describe('handleCreateTask mux pre-resolve seam', () => {
         selectedFiles: [],
         saveDir: '/d',
       },
-      { ...deps, resolveToMux, dispatchMux }
+      { ...deps, mediaResolve, media: fakeMediaTarget() }
     )
-    expect(resolveToMux).not.toHaveBeenCalled()
-    expect(dispatchMux).not.toHaveBeenCalled()
+    expect(mediaResolve.resolve).not.toHaveBeenCalled()
     expect(deps.addUri).toHaveBeenCalledOnce()
   })
 })

@@ -315,7 +315,7 @@ describe('SubmitDownloadAdapter.adapt', () => {
     if (out.kind === 'dash') {
       expect(out.manifestUrl).toBe('https://h/manifest.mpd')
       expect(out.container).toBe('mp4')
-      expect(out.sourceMeta.kind).toBe('dash')
+      expect(out.sourceMeta?.kind).toBe('dash')
     }
   })
 

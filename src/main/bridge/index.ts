@@ -45,7 +45,6 @@ import { BridgeStreamSource } from '@core/bridge-receiver/bridge-stream-source'
 import { getLogger } from '@core/logger'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
 import type { MediaRuntime } from '@core/media-resolve/media-runtime'
-import { makeResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { handleCreateTask } from '@core/task/create-task-handler'
 import { Notifications } from '@motrix/mdxp'
 import {
@@ -429,9 +428,6 @@ export async function bootstrapBridge(args: {
     const localize = (code: string) =>
       t(`bridge.receiver.error.${camelize(code)}`)
 
-    // Extension submit path; desktop Add-Task builds its own adapter over the
-    // same process-scoped service.
-    const resolveToMuxFn = makeResolveToMux(args.mediaResolve)
     const receiver = new BridgeReceiver({
       media: args.media,
       getDefaultSaveDir: args.getDefaultSaveDir,
@@ -447,7 +443,9 @@ export async function bootstrapBridge(args: {
       eventBus: args.eventBus,
       bridgeBus: bus,
       localize,
-      resolveToMux: resolveToMuxFn,
+      // Extension submit path; desktop Add-Task uses the same process-scoped
+      // service.
+      mediaResolve: args.mediaResolve,
       ...(args.waitForReady ? { waitForReady: args.waitForReady } : {}),
     })
     // Register cleanup before restore/start so a partial start is undone. The
