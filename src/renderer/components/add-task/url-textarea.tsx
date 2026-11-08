@@ -258,6 +258,7 @@ export function UrlTextarea({ name, autoFocus }: UrlTextareaProps) {
           placeholder={t('task.add.urlPlaceholder')}
           rows={3}
           aria-label={t('task.add.urlsLabel')}
+          data-add-task-urls=""
           aria-invalid={invalid > 0 || Boolean(errorMessage)}
           aria-describedby={`${statusId}${errorMessage ? ` ${errorId}` : ''}`}
         />

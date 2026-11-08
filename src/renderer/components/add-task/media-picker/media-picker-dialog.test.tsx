@@ -387,11 +387,20 @@ describe('MediaPickerDialog', () => {
     await screen.findByText('Sample Series')
     expect(screen.queryByText(/You picked/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    expect(
-      screen.getByText(/You picked 51 parts, more than 50\./)
-    ).toBeInTheDocument()
+    const warning = screen.getByText(/You picked 51 parts, more than 50\./, {
+      selector: '[data-slot="alert-description"]',
+    })
     // A warning, not a limit.
     expect(screen.getByRole('button', { name: 'Download (51)' })).toBeEnabled()
+    // Announced once, politely, when the selection crosses the threshold;
+    // later checkbox changes don't repeat it.
+    expect(warning.closest('[role="alert"]')).toBeNull()
+    const status = within(screen.getByRole('dialog')).getByRole('status')
+    expect(status).toHaveTextContent(/You picked 51 parts/)
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'P51 Episode 51' })
+    )
+    expect(status).toHaveTextContent(/You picked 51 parts/)
   })
 
   it('keeps created parts and explains each failed one', async () => {
@@ -431,6 +440,9 @@ describe('MediaPickerDialog', () => {
       ok: 1,
       failed: 2,
     })
+    expect(
+      within(screen.getByRole('dialog')).getByRole('status')
+    ).toHaveTextContent('1 added · 2 failed')
     expect(onCreated).not.toHaveBeenCalled()
     expect(
       screen.getByRole('checkbox', { name: 'P1 Episode 1' })

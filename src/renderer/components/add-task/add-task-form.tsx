@@ -853,6 +853,7 @@ export function AddTaskForm({
           pageFileUrls={pageFileUrls}
           onDownloadPagesAsFiles={downloadPagesAsFiles}
           onComplete={completeMediaPick}
+          fieldScope={bodyRef}
         >
           <ScrollArea
             ref={bodyRef}

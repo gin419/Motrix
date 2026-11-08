@@ -6,9 +6,11 @@ import {
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { useFormContext, useWatch } from 'react-hook-form'
@@ -49,6 +51,8 @@ interface MediaPickerProviderProps {
   onDownloadPagesAsFiles: () => void
   /** Every line of the form was added; finish the submission. */
   onComplete: (taskId: string) => void
+  /** Holds the URL field, which takes focus when a picked line goes. */
+  fieldScope: RefObject<HTMLElement | null>
   children: ReactNode
 }
 
@@ -63,6 +67,7 @@ export function MediaPickerProvider({
   pageFileUrls,
   onDownloadPagesAsFiles,
   onComplete,
+  fieldScope,
   children,
 }: MediaPickerProviderProps) {
   const form = useFormContext<AddTaskFormValues>()
@@ -71,6 +76,8 @@ export function MediaPickerProvider({
   const active = enabled && (tab ?? 'links') === 'links'
   const matches = useMediaResolverMatches(active ? (urls ?? '') : '', active)
   const [target, setTarget] = useState<MediaPickerTarget | null>(null)
+  // The chip that opened the picker leaves with its line.
+  const focusUrls = useRef(false)
   // Per page, for the life of the form: a page pasted again remembers what
   // was added and which requests are still unconfirmed.
   const [sessions, setSessions] = useState<
@@ -127,6 +134,7 @@ export function MediaPickerProvider({
 
   const handleCreated = useCallback(
     ({ url, firstTaskId }: MediaPickerCreated) => {
+      focusUrls.current = true
       setTarget(null)
       const current = form.getValues('urls') ?? ''
       const drop = new Set(
@@ -149,6 +157,16 @@ export function MediaPickerProvider({
     [form, onComplete]
   )
 
+  const finalFocus = useCallback(
+    () =>
+      focusUrls.current
+        ? (fieldScope.current?.querySelector<HTMLElement>(
+            '[data-add-task-urls]'
+          ) ?? null)
+        : null,
+    [fieldScope]
+  )
+
   const presentUrls = useMemo(
     () =>
       new Set(
@@ -162,8 +180,10 @@ export function MediaPickerProvider({
     () => ({
       matches,
       disabled,
-      open: (match) =>
-        setTarget({ url: match.url, pluginName: match.match.pluginName }),
+      open: (match) => {
+        focusUrls.current = false
+        setTarget({ url: match.url, pluginName: match.match.pluginName })
+      },
       pageFileUrls: active
         ? pageFileUrls.filter((url) => presentUrls.has(url))
         : [],
@@ -190,6 +210,7 @@ export function MediaPickerProvider({
           requestBase={requestBase}
           onClose={() => setTarget(null)}
           onCreated={handleCreated}
+          finalFocus={finalFocus}
         />
       )}
     </MediaPickerContext.Provider>

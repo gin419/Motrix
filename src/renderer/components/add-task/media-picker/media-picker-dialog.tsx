@@ -104,6 +104,11 @@ interface MediaPickerDialogProps {
    * the user closed the picker.
    */
   onCreated: (created: MediaPickerCreated) => void
+  /**
+   * Where focus goes when the picker closes, or null for the element that
+   * opened it.
+   */
+  finalFocus?: () => HTMLElement | null
 }
 
 /** Text explaining why a CreateTask failed, and whether its outcome is known. */
@@ -144,6 +149,7 @@ export function MediaPickerDialog({
   requestBase,
   onClose,
   onCreated,
+  finalFocus,
 }: MediaPickerDialogProps) {
   const { t } = useTranslation()
   const platform = usePlatformServices()
@@ -260,6 +266,7 @@ export function MediaPickerDialog({
       <DialogContent
         data-slot="media-picker"
         showCloseButton={false}
+        finalFocus={() => finalFocus?.() ?? true}
         className="flex max-h-[min(40rem,calc(100dvh-2rem))] flex-col gap-4 sm:max-w-lg"
       >
         {state.phase === 'ready' && shown !== null ? (
@@ -469,6 +476,9 @@ function ReadyView({
   } | null>(null)
   const [stopping, setStopping] = useState(false)
   const stopRequested = useRef(false)
+  // Read politely by screen readers: batch results and the many-parts
+  // warning when the selection first crosses its threshold.
+  const [announcement, setAnnouncement] = useState('')
 
   // Deferred parts whose qualities came back unavailable can't be picked.
   const blocked = new Map<string, MediaText>()
@@ -610,9 +620,17 @@ function ReadyView({
         platform.notify('info', 'task.add.batchCreated', {
           count: ok + before,
         })
+      setAnnouncement(
+        ok === 1
+          ? t('task.add.created')
+          : t('task.add.batchCreated', { count: ok })
+      )
       if (unsent.size === 0) onFinish()
     } else if (ok > 0) {
       platform.notify('warn', 'task.add.createdPartial', { ok, failed })
+      setAnnouncement(t('task.add.createdPartial', { ok, failed }))
+    } else if (failed > 0) {
+      setAnnouncement(t('task.add.createFailed'))
     }
   }
 
@@ -622,6 +640,17 @@ function ReadyView({
     (preview.auth?.betterWithLogin === true ||
       hasLockedVariants(preview, pickIds))
   const manyParts = picks.length > preview.warnAboveParts
+  const pickCount = useRef(picks.length)
+  pickCount.current = picks.length
+  useEffect(() => {
+    if (!manyParts) return
+    setAnnouncement(
+      t('task.add.media.picker.manyParts', {
+        selected: pickCount.current,
+        limit: preview.warnAboveParts,
+      })
+    )
+  }, [manyParts, preview.warnAboveParts, t])
 
   return (
     <>
@@ -690,7 +719,8 @@ function ReadyView({
             </div>
           )}
           {manyParts && (
-            <Alert>
+            // Not a live alert: the count changes with every checkbox.
+            <Alert role="note">
               <WarningIcon aria-hidden="true" />
               <AlertDescription className="text-xs">
                 {t('task.add.media.picker.manyParts', {
@@ -725,6 +755,9 @@ function ReadyView({
           )}
         </div>
       </div>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       <DialogFooter className="shrink-0">
         {creating ? (
           <Button

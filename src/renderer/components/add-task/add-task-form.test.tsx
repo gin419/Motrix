@@ -565,6 +565,10 @@ describe('AddTaskForm', () => {
       )
       // Another line is still waiting for Download.
       expect(onSubmitSuccess).not.toHaveBeenCalled()
+      // The chip that opened the picker went with its line.
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'URLs' })).toHaveFocus()
+      )
       expect(mockServices.notify).toHaveBeenCalledWith(
         'info',
         'task.add.created'
