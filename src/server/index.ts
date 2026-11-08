@@ -1244,6 +1244,27 @@ async function main() {
   await mediaMetaStore
     .pruneOrphans(db.getAllTasks().map(({ task }) => task.motrixId))
     .catch((err) => log.warn({ err }, 'Media metadata recovery failed'))
+  // The single HLS/DASH/mux runtime for this process. Bridge receivers only
+  // dispatch into it, so a bridge stop or restart leaves media tasks running.
+  const media = mediaRuntime.createPipelines({
+    mediaMetaStore,
+    taskManager,
+    activityRecorder: taskActivityService,
+    eventBus,
+    publishTaskUpdate,
+    publishTaskUpdateNow,
+    pickName: (saveDir, desired) => finalNamePicker.pick(saveDir, desired),
+    persistTask,
+    persistTaskWithOccurrence,
+    occurrenceDispatcher,
+    parentTaskCreated: (task, persistParent) =>
+      createParent(task, persistParent),
+    recordTransition: (input) =>
+      taskInspectorActivityRuntime.recordTransition(input),
+    runTaskMutation: (taskIds, operation) =>
+      taskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
+  })
+  shutdownActions.drainMedia = () => media.stopAndDrain()
   const nasFileRemover = nasFiles
     ? new NasFileRemover(
         nasFiles,
@@ -1405,9 +1426,8 @@ async function main() {
     adapter,
     trackerManager,
     bridgeControl: bridgeManager,
-    getMediaSegmentGids: (taskId) =>
-      bridgeManager.current?.getMediaSegmentGids(taskId) ?? [],
-    cancelMedia: (taskId) => bridgeManager.cancelMedia(taskId),
+    getMediaSegmentGids: (taskId) => media.getActiveSegmentGids(taskId),
+    cancelMedia: (taskId) => media.cancel(taskId),
     aria2BinaryPath: platform.aria2BinaryPath,
     finalNamePicker,
     torrentMetaStore,
@@ -2149,10 +2169,9 @@ async function main() {
     // The manager keeps every bridge:* RPC registered while this factory owns
     // only the optional listener/runtime portion.
     bridgeRuntimeFactory = async (): Promise<ServerBridgeRuntime> => {
-      let receiver: BridgeReceiver | null = null
       const removeTaskDeps = {
         authorizeTaskRemoval: nasTaskAccess?.authorizeRemoval,
-        cancelMedia: async (taskId: string) => receiver?.cancelMedia(taskId),
+        cancelMedia: (taskId: string) => media.cancel(taskId),
         taskManager,
         adapter,
         log,
@@ -2222,7 +2241,7 @@ async function main() {
         authorizeTaskWrite: nasTaskAccess?.authorizeWrite,
         authorizeTaskRemoval: nasTaskAccess?.authorizeRemoval,
         getMediaSegmentGids: (taskId: string) =>
-          receiver?.getMediaSegmentGids(taskId) ?? [],
+          media.getActiveSegmentGids(taskId),
         onPauseRequested: (taskId: string) =>
           trackerManager.noteTaskControl(taskId, true),
         onResumeRequested: (taskId: string) =>
@@ -2313,8 +2332,8 @@ async function main() {
         remoteExtensionConfig,
         trustedExtensionRegistry,
         createExtensionReceiver: ({ bridgeBus }) =>
-          (receiver = new BridgeReceiver({
-            mediaMetaStore,
+          new BridgeReceiver({
+            media,
             getDefaultSaveDir: () => settingsManager.getApp().defaultSaveDir,
             resolveSaveDir: downloadDirectories.resolveSelection,
             recordDirectory: (path) =>
@@ -2348,26 +2367,9 @@ async function main() {
             eventBus,
             bridgeBus,
             localize: (code) => code,
-            ffmpegBinaryPath: null,
-            resolveFfmpegBinaryPath: mediaRuntime.resolveFfmpegBinaryPath,
-            publishTaskUpdate,
-            publishTaskUpdateNow,
-            taskManager,
-            activityRecorder: taskActivityService,
-            segmentAria2: mediaRuntime.segmentAria2,
-            tmpRoot: mediaRuntime.tmpRoot,
-            persistTask,
-            persistTaskWithOccurrence,
-            occurrenceDispatcher,
-            parentTaskCreated: (task, persistParent) =>
-              createParent(task, persistParent),
-            recordTransition: (input) =>
-              taskInspectorActivityRuntime.recordTransition(input),
-            runTaskMutation: (taskIds, operation) =>
-              taskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
             waitForReady: () =>
               supervisor.waitUntilReady(ENGINE_READY_TIMEOUT_MS),
-          })),
+          }),
         // The web approval UI is a separate (Fastify) service; the operator points
         // device-code clients at it via MOTRIX_PUBLIC_URL. Unset → no URL printed.
         verificationUri: nas

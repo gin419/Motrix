@@ -32,7 +32,6 @@ import {
   makeDirectSubmit,
   makeExtensionContext,
 } from '@test-utils/bridge-receiver'
-import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
 import { makeDownloadTask } from '@test-utils/task'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -116,9 +115,7 @@ function args(): Parameters<typeof bootstrapBridge>[0] {
     },
     eventBus: { on: vi.fn(), off: vi.fn() },
     createTaskDeps: {} as never,
-    activityRecorder: {} as never,
-    publishTaskUpdate: vi.fn(),
-    publishTaskUpdateNow: vi.fn(),
+    media: {} as never,
     removeTask: vi.fn(async () => {}),
     submitMagnetForFileSelection: vi.fn(async () => 'magnet'),
     isMagnetFileSelectionEnabled: vi.fn(() => false),
@@ -148,15 +145,6 @@ function args(): Parameters<typeof bootstrapBridge>[0] {
       createTask: vi.fn(async () => ({ taskId: 'created' })),
       parseTorrentFileCount: vi.fn(async () => 1),
     },
-    ffmpegBinaryPath: null,
-    taskManager: {} as never,
-    mediaMetaStore: makeMediaMetaStoreStub(),
-    segmentAria2: {} as never,
-    tmpRoot: '/tmp/media',
-    persistTask: vi.fn(async () => {}),
-    parentTaskCreated: vi.fn(async (_task, persist) => persist()),
-    recordTransition: vi.fn(async () => {}),
-    runTaskMutation: async (_taskIds, operation) => operation(),
     trackAsyncWork: (operation) => operation(),
     mediaResolve: {
       match: () => [],

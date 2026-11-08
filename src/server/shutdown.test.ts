@@ -55,15 +55,24 @@ describe('createServerShutdown', () => {
     await shutdown()
     expect(order.filter((step) => step === 'release-ownership')).toHaveLength(1)
   })
-  it('drains media cancellation before stopping engine RPC and Session writes', async () => {
+  it('drains media after the bridge and before stopping engine RPC and Session writes', async () => {
     const order: string[] = []
-    let release!: () => void
+    let releaseBridge!: () => void
+    const bridgeDrain = new Promise<void>((resolve) => {
+      releaseBridge = resolve
+    })
+    let releaseMedia!: () => void
     const mediaDrain = new Promise<void>((resolve) => {
-      release = resolve
+      releaseMedia = resolve
     })
     const shutdown = createServerShutdown(
       actions(order, {
         closeBridge: async () => {
+          order.push('bridge-closing')
+          await bridgeDrain
+          order.push('bridge-closed')
+        },
+        drainMedia: async () => {
           order.push('media-cancelling')
           await mediaDrain
           order.push('media-drained')
@@ -73,10 +82,17 @@ describe('createServerShutdown', () => {
     )
     const pending = shutdown()
     await vi.waitFor(() => expect(order).toContain('dispose-tracker'))
+    // Bridge handlers may still dispatch media, so media waits for them.
+    expect(order).not.toContain('media-cancelling')
+    releaseBridge()
+    await vi.waitFor(() => expect(order).toContain('media-cancelling'))
     expect(order).not.toContain('stop-engine')
     expect(order).not.toContain('drain-session')
-    release()
+    releaseMedia()
     await pending
+    expect(order.indexOf('bridge-closed')).toBeLessThan(
+      order.indexOf('media-cancelling')
+    )
     expect(order.indexOf('media-drained')).toBeLessThan(
       order.indexOf('stop-engine')
     )

@@ -15,6 +15,7 @@ import {
   makeBridgeReceiverDeps,
   makeDirectSubmit,
   makeExtensionContext,
+  makeTestMediaRuntime,
 } from '@test-utils/bridge-receiver'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BridgeReceiver } from './bridge-receiver'
@@ -257,7 +258,7 @@ describe('bridge default save directory', () => {
       .mockResolvedValue({ taskId: 'mux-task' })
     const deps = makeBridgeReceiverDeps({
       getDefaultSaveDir: () => settings.getApp().defaultSaveDir,
-      ffmpegBinaryPath: '/test/ffmpeg',
+      media: makeTestMediaRuntime(),
       resolveToMux: async () => {
         resolveStarted.resolve()
         await releaseResolve.promise
@@ -292,11 +293,12 @@ describe('bridge default save directory', () => {
         .mockResolvedValue({ taskId: 'media-task' })
       const deps = makeBridgeReceiverDeps({
         getDefaultSaveDir: () => settings.getApp().defaultSaveDir,
-        ffmpegBinaryPath: '/test/ffmpeg',
-        fetchManifest: () => {
-          fetchStarted.resolve()
-          return manifest.promise
-        },
+        media: makeTestMediaRuntime({
+          fetchManifest: () => {
+            fetchStarted.resolve()
+            return manifest.promise
+          },
+        }),
       })
       const receiver = new BridgeReceiver(deps)
       await settings.update({ app: { defaultSaveDir: newDir } })

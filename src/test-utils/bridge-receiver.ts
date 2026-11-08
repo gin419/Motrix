@@ -3,6 +3,11 @@ import { NOOP_TASK_ACTIVITY_RECORDER } from '@core/activity'
 import { BridgeEventBus } from '@core/bridge/bridge-event-bus'
 import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
 import type { BridgeReceiverDeps } from '@core/bridge-receiver/bridge-receiver'
+import {
+  createMediaRuntime,
+  type MediaRuntime,
+  type MediaRuntimeDeps,
+} from '@core/media-resolve/media-runtime'
 import { TaskManager } from '@core/task/task-manager'
 import type { DownloadSubmitParams } from '@motrix/mdxp'
 import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
@@ -14,7 +19,6 @@ export function makeBridgeReceiverDeps(
 ): BridgeReceiverDeps {
   let serial = 0
   return {
-    mediaMetaStore: makeMediaMetaStoreStub(),
     getDefaultSaveDir: () => '/downloads',
     pickName: vi.fn(async (_dir, name) => name),
     createTask: vi.fn(async () => ({
@@ -27,11 +31,24 @@ export function makeBridgeReceiverDeps(
     eventBus: new EventEmitter(),
     bridgeBus: new BridgeEventBus(),
     localize: (code) => code,
-    ffmpegBinaryPath: null,
+    ...overrides,
+  }
+}
+
+/** A real media runtime over inert IO; FFmpeg resolves to a fixed path. */
+export function makeTestMediaRuntime(
+  overrides: Partial<MediaRuntimeDeps> = {}
+): MediaRuntime {
+  return createMediaRuntime({
+    mediaMetaStore: makeMediaMetaStoreStub(),
     taskManager: new TaskManager(),
     activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
+    eventBus: { emit: vi.fn() },
     publishTaskUpdate: vi.fn(),
     publishTaskUpdateNow: vi.fn(),
+    resolveFfmpegBinaryPath: async () => '/test/ffmpeg',
+    pickName: async (_dir, name) => name,
+    persistTask: vi.fn(async () => {}),
     segmentAria2: {
       addUri: vi.fn(async () => 'segment'),
       forceRemove: vi.fn(async () => {}),
@@ -41,9 +58,8 @@ export function makeBridgeReceiverDeps(
       onError: vi.fn(),
     },
     tmpRoot: '/tmp/motrix-test',
-    persistTask: vi.fn(async () => {}),
     ...overrides,
-  }
+  })
 }
 
 export function makeDirectSubmit(

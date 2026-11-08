@@ -386,6 +386,7 @@ describe('MainProcessWorkCoordinator', () => {
       cleanup
     )
     const bridge = source.indexOf("safely('bridge'", cancellation)
+    const media = source.indexOf("safely('media'", cancellation)
     const engine = source.indexOf("safely('engine'", cancellation)
     const shellDrain = source.indexOf(
       "await safely('main-process-work'",
@@ -394,7 +395,9 @@ describe('MainProcessWorkCoordinator', () => {
 
     expect(cancellation).toBeGreaterThan(cleanup)
     expect(bridge).toBeGreaterThan(cancellation)
-    expect(engine).toBeGreaterThan(bridge)
+    // Media drains after the bridge (chained on it) and before the engine.
+    expect(media).toBeGreaterThan(bridge)
+    expect(engine).toBeGreaterThan(media)
     expect(shellDrain).toBeGreaterThan(bridge)
     expect(shellDrain).toBeGreaterThan(engine)
   })

@@ -1,5 +1,8 @@
 import path from 'node:path'
+import { NOOP_TASK_ACTIVITY_RECORDER } from '@core/activity'
 import type { FfmpegDetectionResult } from '@core/plugin/capabilities/ffmpeg-detect'
+import { TaskManager } from '@core/task/task-manager'
+import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
 import { describe, expect, it, vi } from 'vitest'
 import { createServerMediaRuntime } from './media-runtime'
 
@@ -64,5 +67,31 @@ describe('Server media runtime', () => {
       path.join(runtime.tmpRoot, '../normal'),
     ])
       expect(runtime.isSegmentTask({ ...segment, dir })).toBe(false)
+  })
+
+  it('composes the single media runtime over the process segment client', async () => {
+    const { runtime, detectFfmpeg } = setup()
+    const deps = {
+      mediaMetaStore: makeMediaMetaStoreStub(),
+      taskManager: new TaskManager(),
+      activityRecorder: NOOP_TASK_ACTIVITY_RECORDER,
+      eventBus: { emit: vi.fn() },
+      publishTaskUpdate: vi.fn(),
+      publishTaskUpdateNow: vi.fn(),
+      pickName: async (_dir: string, name: string) => name,
+      persistTask: vi.fn(async () => {}),
+    }
+    const pipelines = runtime.createPipelines(deps)
+    expect(() => runtime.createPipelines(deps)).toThrow(
+      'media pipelines already created'
+    )
+    detectFfmpeg.mockResolvedValue({ active: null, candidates: [] })
+    expect(await pipelines.isFfmpegAvailable()).toBe(false)
+    detectFfmpeg.mockResolvedValue({
+      active: { path: '/data/binaries/ffmpeg', version: '9.0.2' },
+      candidates: [],
+    })
+    expect(await pipelines.isFfmpegAvailable()).toBe(true)
+    expect(pipelines.getActiveSegmentGids('unknown')).toEqual([])
   })
 })

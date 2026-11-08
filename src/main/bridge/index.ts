@@ -44,6 +44,7 @@ import { BridgeReceiver } from '@core/bridge-receiver/bridge-receiver'
 import { BridgeStreamSource } from '@core/bridge-receiver/bridge-stream-source'
 import { getLogger } from '@core/logger'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import type { MediaRuntime } from '@core/media-resolve/media-runtime'
 import { makeResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { handleCreateTask } from '@core/task/create-task-handler'
 import { Notifications } from '@motrix/mdxp'
@@ -60,7 +61,6 @@ import {
   type ResolvePairResult,
 } from '@shared/protocol/bridge'
 import type { BridgeSettings } from '@shared/schemas/bridge-settings'
-import type { TaskActivityRecorder } from '@shared/types/task-activity'
 import { app, ipcMain } from 'electron'
 import { CancellationTokenSource } from 'vscode-jsonrpc'
 import { registerTrustedIpcHandler } from '../ipc/trusted-ipc'
@@ -132,47 +132,6 @@ export interface BridgeRuntime {
    *  was taken and the bridge fell back to an ephemeral port (§4). */
   degraded: boolean
   shutdown: () => Promise<void>
-  /**
-   * The shared MuxPipeline used by BridgeReceiver. Exposed read-only so the
-   * desktop Add-Task path can reuse the SAME coordinator instance — never
-   * construct a second one (that would reintroduce the SP-1 phantom-task bug).
-   * Undefined when this runtime has no media pipeline.
-   */
-  muxPipeline:
-    | import('@core/bridge-receiver/pipelines/mux-pipeline').MuxPipeline
-    | undefined
-  /**
-   * Tear down a coordinator-managed media task's in-flight run (segment
-   * downloaders + ffmpeg + temp). Used by the remove path so removing a media
-   * task's row does not orphan its downloads. No-op once the run has finished.
-   */
-  cancelMedia: (taskId: string) => Promise<void>
-  /**
-   * Active aria2 segment gids for a coordinator-managed media task (Mux/Hls),
-   * exposed so pause/resume commands can act on the real segment downloads
-   * (the task's own engineTaskId is '' — no aria2 handle). Returns [] for any
-   * non-media / unknown / past-download-phase task.
-   */
-  getMediaSegmentGids: (taskId: string) => string[]
-  /**
-   * The resolveToMux factory (youtube/bilibili → mux pair) used by
-   * BridgeReceiver. Exposed so the desktop Add-Task path can call the same
-   * resolver without re-constructing it. Always defined when BridgeRuntime is
-   * live; the factory itself returns null for non-resolver URLs and throws
-   * MediaResolveError when a matching resolver fails.
-   * The optional cookieHeader arg is forwarded to the plugin for bilibili HD
-   * (desktop Add-Task path passes no cookies → ≤480p, by design).
-   */
-  resolveToMux: (
-    url: string,
-    cookieHeader?: string
-  ) => Promise<{
-    videoUrl: string
-    audioUrl: string
-    container: 'mp4' | 'mkv'
-    headers?: Record<string, string>
-    title?: string
-  } | null>
 }
 
 interface NativeMessagingInstallation {
@@ -314,7 +273,6 @@ export async function bootstrapBridge(args: {
     off(event: string, listener: (payload: unknown) => void): unknown
   }
   createTaskDeps: Parameters<typeof handleCreateTask>[1]
-  activityRecorder: TaskActivityRecorder
   removeTask: (taskId: string) => Promise<void>
   // Bridge magnet submits route through MagnetTracker's metadata-only fetch
   // when file selection is on — mirroring the renderer's Commands.CreateTask
@@ -335,25 +293,8 @@ export async function bootstrapBridge(args: {
   readHandlerDeps: ReadHandlerDeps
   // Spec 4 — v1 WRITE methods (pause/resume/remove/add).
   writeHandlerDeps: WriteHandlerDeps
-  // A live resolver keeps the media pipeline available when FFmpeg is
-  // configured after startup. Shells without media support omit it.
-  ffmpegBinaryPath: string | null
-  /** Re-resolves the current executable immediately before each mux. */
-  resolveFfmpegBinaryPath?: BridgeReceiverDeps['resolveFfmpegBinaryPath']
-  /** Coalesced / immediate TaskUpdated publication (TaskUpdatePublisher),
-   *  threaded through BridgeReceiver into the MediaTaskCoordinator. */
-  publishTaskUpdate: () => void
-  publishTaskUpdateNow: () => void
-  mediaMetaStore: BridgeReceiverDeps['mediaMetaStore']
-  taskManager: BridgeReceiverDeps['taskManager']
-  segmentAria2: BridgeReceiverDeps['segmentAria2']
-  tmpRoot: string
-  persistTask: BridgeReceiverDeps['persistTask']
-  persistTaskWithOccurrence?: BridgeReceiverDeps['persistTaskWithOccurrence']
-  occurrenceDispatcher?: BridgeReceiverDeps['occurrenceDispatcher']
-  parentTaskCreated: BridgeReceiverDeps['parentTaskCreated']
-  recordTransition: BridgeReceiverDeps['recordTransition']
-  runTaskMutation: BridgeReceiverDeps['runTaskMutation']
+  /** The process-scoped media runtime; the receiver dispatches into it. */
+  media: MediaRuntime
   /** Main-process admission/drain for renderer IPC and incoming download work. */
   trackAsyncWork: <T>(operation: () => Promise<T>) => Promise<T>
   // Startup barrier: submits await this before any pipeline work reaches the
@@ -488,11 +429,11 @@ export async function bootstrapBridge(args: {
     const localize = (code: string) =>
       t(`bridge.receiver.error.${camelize(code)}`)
 
-    // Build the mux adapter once — shared between BridgeReceiver (extension
-    // submit path) and the BridgeRuntime surface (desktop Add-Task path).
+    // Extension submit path; desktop Add-Task builds its own adapter over the
+    // same process-scoped service.
     const resolveToMuxFn = makeResolveToMux(args.mediaResolve)
     const receiver = new BridgeReceiver({
-      mediaMetaStore: args.mediaMetaStore,
+      media: args.media,
       getDefaultSaveDir: args.getDefaultSaveDir,
       resolveSaveDir: args.resolveSaveDir,
       recordDirectory: args.recordDirectory,
@@ -506,25 +447,12 @@ export async function bootstrapBridge(args: {
       eventBus: args.eventBus,
       bridgeBus: bus,
       localize,
-      ffmpegBinaryPath: args.ffmpegBinaryPath,
-      resolveFfmpegBinaryPath: args.resolveFfmpegBinaryPath,
-      publishTaskUpdate: args.publishTaskUpdate,
-      publishTaskUpdateNow: args.publishTaskUpdateNow,
-      taskManager: args.taskManager,
-      activityRecorder: args.activityRecorder,
-      segmentAria2: args.segmentAria2,
-      tmpRoot: args.tmpRoot,
       resolveToMux: resolveToMuxFn,
-      persistTask: args.persistTask,
-      persistTaskWithOccurrence: args.persistTaskWithOccurrence,
-      occurrenceDispatcher: args.occurrenceDispatcher,
-      parentTaskCreated: args.parentTaskCreated,
-      recordTransition: args.recordTransition,
-      runTaskMutation: args.runTaskMutation,
       ...(args.waitForReady ? { waitForReady: args.waitForReady } : {}),
     })
-    // restoreInflight() may resume coordinator-owned jobs before it rejects.
-    // Cache cleanup ownership first so every partial restore/start is drained.
+    // Register cleanup before restore/start so a partial start is undone. The
+    // receiver only stops publishing; media runs belong to the process-scoped
+    // runtime and survive a bridge stop.
     ownership.own('receiver', () => receiver.stopAndDrain())
     await receiver.restoreInflight()
     receiver.start()
@@ -983,11 +911,6 @@ export async function bootstrapBridge(args: {
       port,
       degraded,
       shutdown: () => ownership.dispose(),
-      muxPipeline: receiver.muxPipeline,
-      getMediaSegmentGids: (taskId: string) =>
-        receiver.getMediaSegmentGids(taskId),
-      cancelMedia: (taskId: string) => receiver.cancelMedia(taskId),
-      resolveToMux: resolveToMuxFn,
     }
   } catch (error) {
     return ownership.rollback(error)

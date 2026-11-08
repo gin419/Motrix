@@ -13,6 +13,10 @@ export interface ServerShutdownActions {
   stopPolling: ShutdownAction
   closeIngress: ShutdownAction
   closeBridge: ShutdownAction
+  /** Cancel and join process-scoped media runs. Runs after the bridge has
+   *  drained (its handlers may still dispatch media) and before Session and
+   *  engine stop (cancellation purges aria2 segments and persists tasks). */
+  drainMedia?: ShutdownAction
   unsubscribeProducers: ShutdownAction
   drainDevWatcher: ShutdownAction
   drainPluginHost: ShutdownAction
@@ -89,8 +93,10 @@ export function createServerShutdown(
       // compensation settles.
       await safely('tracker', actions.disposeTracker)
       // Media cancellation purges aria2 segments and persists the parent task.
-      // Keep RPC and Session writes available until the bridge has drained it.
+      // Keep RPC and Session writes available until the bridge has drained
+      // and the media runtime has joined its runs.
       await bridgeDrain
+      if (actions.drainMedia) await safely('media', actions.drainMedia)
       await Promise.all([
         cancellationDrain,
         safely('session', actions.drainSession),

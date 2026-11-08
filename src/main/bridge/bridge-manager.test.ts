@@ -16,10 +16,6 @@ function makeRuntime(): BridgeRuntime {
     port: 16802,
     degraded: false,
     shutdown: vi.fn().mockResolvedValue(undefined),
-    muxPipeline: undefined,
-    getMediaSegmentGids: vi.fn().mockReturnValue([]),
-    cancelMedia: vi.fn().mockResolvedValue(undefined),
-    resolveToMux: vi.fn().mockResolvedValue(null),
   }
 }
 

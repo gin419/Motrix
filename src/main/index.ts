@@ -46,6 +46,10 @@ import {
 import { newTaskId } from '@core/lib/ids'
 import { getLogger } from '@core/logger'
 import { makeMediaResolveService } from '@core/media-resolve/media-resolve-service'
+import {
+  createMediaRuntime,
+  type MediaRuntime,
+} from '@core/media-resolve/media-runtime'
 import { registerEngineCompatibilitySubscriber } from '@core/notifications/engine-compatibility-subscriber'
 import { registerEngineFailureSubscriber } from '@core/notifications/engine-failure-subscriber'
 import { NotificationCenter } from '@core/notifications/notification-center'
@@ -590,6 +594,8 @@ let devWatcherHandle: { close(): Promise<void> } | null = null
 let bridgeManager: BridgeManager | null = null
 let magnetTracker: MagnetTracker | null = null
 let segmentClient: Aria2SegmentClient | null = null
+// One HLS/DASH/mux runtime per process, independent of the browser bridge.
+let mediaRuntime: MediaRuntime | null = null
 let disposeIpcIngress: (() => void) | null = null
 let legacyImportService: LegacyImportService | null = null
 let legacyBtActivationService: LegacyBtActivationService | null = null
@@ -656,9 +662,12 @@ function performCleanup(): Promise<void> {
       safely('completed-engine-tasks', () =>
         completedEngineTaskCleanup?.stopAndDrain()
       ),
-      // The bridge owns long-lived HLS/DASH/mux jobs. Closing it cancels media
-      // work and drains accepted bridge handlers.
-      safely('bridge', () => bridgeManager?.stop()),
+      // Closing the bridge drains accepted extension handlers, which may still
+      // dispatch media jobs. The process-scoped media runtime is drained after
+      // it, while engine RPC and Session persistence are still available.
+      safely('bridge', () => bridgeManager?.stop()).then(() =>
+        safely('media', () => mediaRuntime?.stopAndDrain())
+      ),
       safely('rpc-notifications', () => {
         for (const unsubscribe of pollingNotificationUnsubscribers.splice(0)) {
           unsubscribe()
@@ -2713,6 +2722,53 @@ async function initializeMainProcess(): Promise<void> {
   })
   menuManager.install()
 
+  const ffmpegBinariesDir = path.join(platform.userDataDir, 'binaries')
+  // Resolve the configured/user-provided FFmpeg path without executing it.
+  // Running `ffmpeg -version` here would trigger Gatekeeper for quarantined
+  // user binaries during app startup, before any media task needs FFmpeg.
+  const resolveFfmpegLocation = () =>
+    locateFfmpeg(
+      {
+        manualPath: settingsManager.getMedia().ffmpegBinaryPath,
+        userDataBinariesDir: ffmpegBinariesDir,
+        platform: process.platform,
+        envPath: resolveElectronFfmpegEnvPath(),
+      },
+      (candidate) => resolveVerifiedFfmpeg(platform.userDataDir, candidate)
+    )
+  // Media pipelines are process-scoped: built once here, shared by extension
+  // submits and desktop creates, and drained by cleanup — a bridge stop or
+  // restart no longer cancels running media tasks.
+  const segmentAria2Client = new Aria2SegmentClient(rpcClient, adapter)
+  segmentClient = segmentAria2Client
+  const activeMediaRuntime = createMediaRuntime({
+    mediaMetaStore,
+    taskManager,
+    activityRecorder: activeTaskActivityService,
+    eventBus,
+    publishTaskUpdate,
+    publishTaskUpdateNow,
+    resolveFfmpegBinaryPath: async () =>
+      (await resolveFfmpegLocation()).binaryPath,
+    pickName: (saveDir, desired) => finalNamePicker.pick(saveDir, desired),
+    // Media completion durable-save — media tasks bypass the poll loop's
+    // transition saves entirely.
+    persistTask,
+    persistTaskWithOccurrence,
+    occurrenceDispatcher,
+    parentTaskCreated: (task, persistParent) =>
+      activeTaskInspectorActivityRuntime.parentTaskCreated(task, persistParent),
+    recordTransition: (input) =>
+      activeTaskInspectorActivityRuntime.recordTransition(input),
+    runTaskMutation: (taskIds, operation) =>
+      activeTaskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
+    segmentAria2: segmentAria2Client,
+    // mediaTmpDir was computed once at bootstrap (above) so
+    // SessionManager.restore() and the poll loop share the exact same root.
+    tmpRoot: mediaTmpDir,
+  })
+  mediaRuntime = activeMediaRuntime
+
   const nativeMessagingInstaller = createNativeMessagingInstaller()
   const createBridgeRuntime = async () => {
     const bridgeReAddDeps = {
@@ -2802,10 +2858,8 @@ async function initializeMainProcess(): Promise<void> {
       publishTaskUpdate,
       publishTaskUpdateNow,
       // Media task removal must tear down the coordinator run (segment
-      // downloaders + ffmpeg), or removing the row orphans them. Lazy over
-      // bridgeManager.current — the coordinator lives in the bridge runtime.
-      cancelMedia: (taskId: string) =>
-        bridgeManager?.current?.cancelMedia(taskId) ?? Promise.resolve(),
+      // downloaders + ffmpeg), or removing the row orphans them.
+      cancelMedia: (taskId: string) => activeMediaRuntime.cancel(taskId),
       deleteParentTasks: (
         taskIds: readonly string[],
         deleteParents: () => void | Promise<void>
@@ -2821,8 +2875,7 @@ async function initializeMainProcess(): Promise<void> {
         activeTaskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
     }
     // Deps for the media-aware pause/resume core action driven by the bridge
-    // control-plane. getMediaSegmentGids is lazy over bridgeManager.current
-    // (same as the IPC command path in commands.ts).
+    // control-plane (same media runtime as the IPC command path).
     const mediaActionDeps = {
       onPauseRequested: (taskId: string) =>
         trackerManager?.noteTaskControl(taskId, true),
@@ -2843,26 +2896,10 @@ async function initializeMainProcess(): Promise<void> {
       ) =>
         activeTaskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
       getMediaSegmentGids: (id: string) =>
-        bridgeManager?.current?.getMediaSegmentGids(id) ?? [],
+        activeMediaRuntime.getActiveSegmentGids(id),
       publishTaskUpdate,
       publishTaskUpdateNow,
     }
-    const ffmpegBinariesDir = path.join(platform.userDataDir, 'binaries')
-    // Resolve the configured/user-provided FFmpeg path without executing it.
-    // Running `ffmpeg -version` here would trigger Gatekeeper for quarantined
-    // user binaries during app startup, before any media task needs FFmpeg.
-    const resolveFfmpegLocation = () =>
-      locateFfmpeg(
-        {
-          manualPath: settingsManager.getMedia().ffmpegBinaryPath,
-          userDataBinariesDir: ffmpegBinariesDir,
-          platform: process.platform,
-          envPath: resolveElectronFfmpegEnvPath(),
-        },
-        (candidate) => resolveVerifiedFfmpeg(platform.userDataDir, candidate)
-      )
-    const segmentAria2Client = new Aria2SegmentClient(rpcClient, adapter)
-    segmentClient = segmentAria2Client
     const revealInFolder = createRevealInFolderHandler({
       shell,
       getTask: (taskId) => taskManager.getById(taskId),
@@ -2872,13 +2909,11 @@ async function initializeMainProcess(): Promise<void> {
     if (bridgeDataDirLockRecoveryAuthority === null) {
       throw new Error('bridge single-instance ownership unavailable')
     }
-    // mediaTmpDir / mediaTmpRoot were computed once at bootstrap (above) so
-    // SessionManager.restore() and the poll loop share the exact same root.
     const downloadDirectories = createDownloadDirectories({
       getSettings: () => settingsManager.getApp(),
     })
     return bootstrapBridge({
-      mediaMetaStore,
+      media: activeMediaRuntime,
       getMainWindow: () => windowManager?.get('main') ?? null,
       motrixVersion: app.getVersion(),
       ffmpegAvailable: async () => (await resolveFfmpegLocation()).available,
@@ -2890,7 +2925,6 @@ async function initializeMainProcess(): Promise<void> {
       bridgeDataDirLockRecoveryAuthority,
       eventBus,
       createTaskDeps,
-      activityRecorder: activeTaskActivityService,
       // Startup barrier: hold extension submits (all kinds — direct, magnet,
       // hls/dash/mux) until restore/recovery settle. The extension reconnects
       // within ~0.5s of app launch, well inside the restore window.
@@ -2935,28 +2969,6 @@ async function initializeMainProcess(): Promise<void> {
           (await torrentParser.parse(base64)).files.length,
         revealTask: (taskId) => revealInFolder({ taskId }),
       },
-      ffmpegBinaryPath: null,
-      resolveFfmpegBinaryPath: async () =>
-        (await resolveFfmpegLocation()).binaryPath,
-      publishTaskUpdate,
-      publishTaskUpdateNow,
-      taskManager,
-      segmentAria2: segmentAria2Client,
-      tmpRoot: mediaTmpDir,
-      // Media completion durable-save (the coordinator's persist hook) —
-      // media tasks bypass the poll loop's transition saves entirely.
-      persistTask,
-      persistTaskWithOccurrence,
-      occurrenceDispatcher,
-      parentTaskCreated: (task, persistParent) =>
-        activeTaskInspectorActivityRuntime.parentTaskCreated(
-          task,
-          persistParent
-        ),
-      recordTransition: (input) =>
-        activeTaskInspectorActivityRuntime.recordTransition(input),
-      runTaskMutation: (taskIds, operation) =>
-        activeTaskInspectorActivityRuntime.runTaskMutation(taskIds, operation),
       trackAsyncWork: (operation) => mainProcessWork.run(operation),
       mediaResolve,
     })
@@ -3107,6 +3119,8 @@ async function initializeMainProcess(): Promise<void> {
     hookOrchestrator,
     // biome-ignore lint/style/noNonNullAssertion: assigned just above in this block
     bridgeManager: bridgeManager!,
+    media: activeMediaRuntime,
+    mediaResolve,
     magnetTracker: activeMagnetTracker,
     activityRecorder: activeTaskActivityService,
     persistTask,
