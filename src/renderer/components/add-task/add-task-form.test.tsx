@@ -708,6 +708,38 @@ describe('AddTaskForm', () => {
       expect(sent[1]).toEqual(sent[0])
     })
 
+    it('keeps the form open while a mistyped line remains', async () => {
+      serveMedia(() => ({ gid: 'gid-1', taskId: 'task-1' }))
+      const onSubmitSuccess = vi.fn()
+      renderForm({
+        onSubmitSuccess,
+        defaultValues: {
+          tab: 'links',
+          urls: `${page}\nnot-a-url`,
+          saveDir: '/d',
+        },
+      })
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'Example Resolver: Choose parts & quality',
+        })
+      )
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Download (1)' })
+      )
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'URLs' })).toHaveValue(
+          'not-a-url'
+        )
+      )
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(onSubmitSuccess).not.toHaveBeenCalled()
+      expect(screen.getByRole('textbox', { name: 'URLs' })).toHaveAttribute(
+        'aria-invalid',
+        'true'
+      )
+    })
+
     it('offers no picker when re-downloading a task', async () => {
       serveMedia(() => ({ gid: 'gid-1' }))
       renderForm({

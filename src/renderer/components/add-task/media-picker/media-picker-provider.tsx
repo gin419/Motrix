@@ -118,8 +118,9 @@ export function MediaPickerProvider({
         shouldDirty: true,
         shouldValidate: Boolean(remaining.trim()),
       })
-      if (!parseUrlLines(remaining).some((line) => line.valid))
-        onComplete(firstTaskId)
+      // A line that is still there, even a mistyped one, keeps the form open
+      // with its error, as after a plain Download.
+      if (parseUrlLines(remaining).length === 0) onComplete(firstTaskId)
     },
     [form, onComplete]
   )
