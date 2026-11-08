@@ -147,8 +147,8 @@ export const mediaPickSchema = z
     maxHeight: z.number().int().positive().max(100_000).optional(),
     /**
      * Save into a folder named after the collection title (see
-     * `MediaPreview.folderName`). Multi-part picks are meant to set it by
-     * default; no picker UI sends a pick yet.
+     * `MediaPreview.folderName`). The Add Task media picker sets it by
+     * default when more than one part is picked.
      */
     saveToFolder: z.boolean().optional(),
   })

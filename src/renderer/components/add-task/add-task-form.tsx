@@ -64,6 +64,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { AddTaskLayoutProvider } from './add-task-layout-context'
 import { FooterActions } from './footer-actions'
 import { LinksTabPanel } from './links-tab-panel'
+import { MediaPickerProvider } from './media-picker/media-picker-provider'
 import {
   createInputIdentity,
   forgetPendingCreate,
@@ -76,6 +77,7 @@ import {
   isDefiniteRejectionKey,
   parsePathTooLong,
   parsePluginChainAbort,
+  rejectionOffersPageAsFile,
   taskCreateFailureReason,
 } from './task-create-failure'
 import { TorrentTabPanel } from './torrent-tab-panel'
@@ -192,6 +194,10 @@ export function AddTaskForm({
     draft?: string
     line?: number
   } | null>(null)
+  // Lines whose site resolution failed in a way that allows saving the page
+  // itself, and the lines the user chose to save that way.
+  const [pageFileUrls, setPageFileUrls] = useState<string[]>([])
+  const skipMediaResolve = useRef(new Set<string>())
   const conflictPresentation = useExitSnapshot(
     duplicateConflict !== null,
     duplicateConflict
@@ -550,7 +556,18 @@ export function AddTaskForm({
       setSubmitting(true)
       try {
         form.clearErrors('urls')
-        const requests = formValuesToTaskCreateRequests(values)
+        setPageFileUrls([])
+        const requests = formValuesToTaskCreateRequests(values).map(
+          (request): TaskCreateRequest =>
+            request.type === 'http' &&
+            skipMediaResolve.current.has(request.uris[0] ?? '')
+              ? { ...request, mediaResolve: 'skip' }
+              : request
+        )
+        const pageFileCandidates: string[] = []
+        // A "page as a file" choice lasts until its request settles; only an
+        // unconfirmed one is retried the same way.
+        const unsettledSkips = new Set<string>()
         const lines = values.tab === 'links' ? parseUrlLines(values.urls) : []
         const validLines = lines.filter((line) => line.valid)
         const unused = [
@@ -620,6 +637,15 @@ export function AddTaskForm({
             if (request.type === 'http') {
               if (rejection) forgetPendingCreate(inputs[index].id)
               else unconfirmed = true
+              if (!rejection && request.mediaResolve === 'skip')
+                unsettledSkips.add(request.uris[0])
+              if (
+                purpose === 'create' &&
+                rejection &&
+                request.mediaResolve !== 'skip' &&
+                rejectionOffersPageAsFile(rejection)
+              )
+                pageFileCandidates.push(request.uris[0])
             }
             firstFailureReason ??= rejection ?? taskCreateFailureReason(err)
             console.error(err)
@@ -673,6 +699,8 @@ export function AddTaskForm({
                 : firstFailureReason,
           })
         }
+        skipMediaResolve.current = unsettledSkips
+        setPageFileUrls(pageFileCandidates)
         if (blockedByConflict) return
         if (failed === 0 && successes.length > 0) {
           platform.notify('info', 'task.add.created')
@@ -700,6 +728,7 @@ export function AddTaskForm({
       completeCurrentSubmission,
       createRequestScope,
       platform,
+      purpose,
       submitting,
       form,
       t,
@@ -769,6 +798,22 @@ export function AddTaskForm({
     [active, completeConflict, duplicateConflict, platform]
   )
 
+  const downloadPagesAsFiles = useCallback(() => {
+    const added = pageFileUrls.filter(
+      (url) => !skipMediaResolve.current.has(url)
+    )
+    for (const url of added) skipMediaResolve.current.add(url)
+    void form.handleSubmit(onSubmit, () => {
+      // Nothing was sent, so a later plain Download resolves the page again.
+      for (const url of added) skipMediaResolve.current.delete(url)
+    })()
+  }, [form, onSubmit, pageFileUrls])
+
+  const completeMediaPick = useCallback(
+    (taskId: string) => void completeCurrentSubmission(taskId),
+    [completeCurrentSubmission]
+  )
+
   // Submit only the focused form, never a draft underneath another dialog.
   useEffect(() => {
     if (!active) return
@@ -800,56 +845,67 @@ export function AddTaskForm({
   return (
     <AddTaskLayoutProvider onAdvancedOpenChange={onAdvancedOpenChange}>
       <FormProvider {...form}>
-        <ScrollArea
-          ref={bodyRef}
-          data-slot="add-task-form-body"
-          className={cn(presentation === 'dialog' ? 'flex-auto' : 'flex-1')}
+        <MediaPickerProvider
+          enabled={purpose === 'create'}
+          disabled={
+            !active || submitting || advancingTorrent || batchSubmitting
+          }
+          pageFileUrls={pageFileUrls}
+          onDownloadPagesAsFiles={downloadPagesAsFiles}
+          onComplete={completeMediaPick}
+          fieldScope={bodyRef}
         >
-          <ScrollAreaViewport
-            tabIndex={-1}
-            className="overscroll-contain focus-visible:ring-0"
+          <ScrollArea
+            ref={bodyRef}
+            data-slot="add-task-form-body"
+            className={cn(presentation === 'dialog' ? 'flex-auto' : 'flex-1')}
           >
-            <ScrollAreaContent
-              data-adaptive-content
-              className={cn(
-                'px-4 pt-2',
-                presentation === 'dialog' ? 'pb-4' : 'pb-[72px]'
-              )}
-              style={{ minWidth: '100%' }}
+            <ScrollAreaViewport
+              tabIndex={-1}
+              className="overscroll-contain focus-visible:ring-0"
             >
-              <RendererSubmissionNotice className="mb-3 mt-1" />
-              {purpose === 'redownload' ? (
-                <LinksTabPanel advancedDefaultOpen />
-              ) : (
-                <TabsSection
-                  onTorrentFilesLoaded={handleLocalTorrentFilesLoaded}
-                />
-              )}
-            </ScrollAreaContent>
-          </ScrollAreaViewport>
-          <ScrollBar />
-        </ScrollArea>
-        <div
-          ref={footerRef}
-          data-slot="add-task-form-footer"
-          className={cn(
-            taskFormFooter,
-            presentation === 'window' && 'fixed bottom-0 left-0'
-          )}
-        >
-          <FooterActionsBridge
-            submitLabel={
-              purpose === 'redownload'
-                ? t('panel.downloads.action.redownload')
-                : undefined
-            }
-            onCancel={() => void handleCancel()}
-            onDownloadAll={handleDownloadAllTorrents}
-            onSubmit={() => void form.handleSubmit(onSubmit)()}
-            submitting={submitting || advancingTorrent || batchSubmitting}
-            torrentQueue={torrentQueue}
-          />
-        </div>
+              <ScrollAreaContent
+                data-adaptive-content
+                className={cn(
+                  'px-4 pt-2',
+                  presentation === 'dialog' ? 'pb-4' : 'pb-[72px]'
+                )}
+                style={{ minWidth: '100%' }}
+              >
+                <RendererSubmissionNotice className="mb-3 mt-1" />
+                {purpose === 'redownload' ? (
+                  <LinksTabPanel advancedDefaultOpen />
+                ) : (
+                  <TabsSection
+                    onTorrentFilesLoaded={handleLocalTorrentFilesLoaded}
+                  />
+                )}
+              </ScrollAreaContent>
+            </ScrollAreaViewport>
+            <ScrollBar />
+          </ScrollArea>
+          <div
+            ref={footerRef}
+            data-slot="add-task-form-footer"
+            className={cn(
+              taskFormFooter,
+              presentation === 'window' && 'fixed bottom-0 left-0'
+            )}
+          >
+            <FooterActionsBridge
+              submitLabel={
+                purpose === 'redownload'
+                  ? t('panel.downloads.action.redownload')
+                  : undefined
+              }
+              onCancel={() => void handleCancel()}
+              onDownloadAll={handleDownloadAllTorrents}
+              onSubmit={() => void form.handleSubmit(onSubmit)()}
+              submitting={submitting || advancingTorrent || batchSubmitting}
+              torrentQueue={torrentQueue}
+            />
+          </div>
+        </MediaPickerProvider>
         <AlertDialog
           open={duplicateConflict !== null}
           onOpenChange={(open) => !open && setDuplicateConflict(null)}

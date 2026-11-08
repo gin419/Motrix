@@ -7,6 +7,8 @@
 
 import { parseMediaResolveMessage } from '@shared/errors'
 
+const MEDIA_PROTECTED_KEY = 'task.add.media.unavailable.protected'
+
 /** Strip the IPC envelope and error-class prefix from a rejection. */
 export function taskCreateFailureReason(error: unknown): string | null {
   if (!(error instanceof Error)) return null
@@ -42,6 +44,16 @@ export function definiteRejectionMessage(rejection: string): RejectionMessage {
   return parsed.detail
     ? { key: parsed.key, values: { detail: parsed.detail } }
     : { key: parsed.key }
+}
+
+/**
+ * Whether a definite rejection may be retried as "download the page as a
+ * file". Never for DRM or encrypted media: the page is not the media, and
+ * offering it would suggest the protection can be bypassed.
+ */
+export function rejectionOffersPageAsFile(rejection: string): boolean {
+  const parsed = parseMediaResolveMessage(rejection)
+  return parsed !== null && parsed.key !== MEDIA_PROTECTED_KEY
 }
 
 const WEB_RPC_FAILURE = /^rpc failed \d{3}: (\{.*\})$/su
