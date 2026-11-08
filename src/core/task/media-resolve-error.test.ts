@@ -29,6 +29,8 @@ describe('MediaResolveError message', () => {
     ['removed', 'task.add.media.unavailable.notFound'],
     // A reason the host has no text for falls back to the generic one.
     ['members-only-beta', 'task.add.media.unavailable.unsupported'],
+    // An inherited object member is not a reason the host knows.
+    ['constructor', 'task.add.media.unavailable.unsupported'],
   ])('explains the unavailable reason %s', (reason, key) => {
     const error = new MediaResolveError('p', 'unavailable', undefined, reason)
     expect(error).toMatchObject({

@@ -135,8 +135,12 @@ export function mediaResolveMessageKey(
   reason?: string
 ): string {
   if (failure === 'unavailable') {
+    // The reason is untrusted plugin output: an inherited member such as
+    // `constructor` must not pass for a known reason.
     const leaf =
-      MEDIA_UNAVAILABLE_TEXT[reason as MediaUnavailableReason] ?? 'unsupported'
+      reason !== undefined && Object.hasOwn(MEDIA_UNAVAILABLE_TEXT, reason)
+        ? MEDIA_UNAVAILABLE_TEXT[reason as MediaUnavailableReason]
+        : 'unsupported'
     return `task.add.media.unavailable.${leaf}`
   }
   return MEDIA_FAILURE_KEYS[failure] ?? MEDIA_RESOLVE_FAILED_KEY
