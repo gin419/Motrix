@@ -24,15 +24,22 @@ interface MediaEntryListProps {
   preview: MediaPreview
   selected: ReadonlySet<string>
   status: ReadonlyMap<string, EntryRowStatus>
+  /** Parts found unavailable after the preview, with the reason. */
+  blocked: ReadonlyMap<string, MediaText>
   disabled?: boolean
   onSelectionChange: (next: Set<string>) => void
 }
 
 function canPick(
   entry: MediaPreviewEntry,
-  status: ReadonlyMap<string, EntryRowStatus>
+  status: ReadonlyMap<string, EntryRowStatus>,
+  blocked: ReadonlyMap<string, MediaText>
 ): boolean {
-  return isEntrySelectable(entry) && status.get(entry.id)?.kind !== 'created'
+  return (
+    isEntrySelectable(entry) &&
+    !blocked.has(entry.id) &&
+    status.get(entry.id)?.kind !== 'created'
+  )
 }
 
 /**
@@ -44,13 +51,16 @@ export function MediaEntryList({
   preview,
   selected,
   status,
+  blocked,
   disabled,
   onSelectionChange,
 }: MediaEntryListProps) {
   const { t } = useTranslation()
   const anchor = useRef<number | null>(null)
   const shift = useRef(false)
-  const pickable = preview.entries.filter((entry) => canPick(entry, status))
+  const pickable = preview.entries.filter((entry) =>
+    canPick(entry, status, blocked)
+  )
   const pickedCount = pickable.filter((entry) => selected.has(entry.id)).length
   const allPicked = pickable.length > 0 && pickedCount === pickable.length
   const translate = (text: MediaText) => t(text.key, text.values)
@@ -61,7 +71,7 @@ export function MediaEntryList({
       shift.current && anchor.current !== null ? anchor.current : index
     const [start, end] = from <= index ? [from, index] : [index, from]
     for (const entry of preview.entries.slice(start, end + 1)) {
-      if (!canPick(entry, status)) continue
+      if (!canPick(entry, status, blocked)) continue
       if (checked) next.add(entry.id)
       else next.delete(entry.id)
     }
@@ -108,7 +118,13 @@ export function MediaEntryList({
         {preview.entries.map((entry, index) => {
           const position = entryPosition(preview, entry)
           const rowStatus = status.get(entry.id)
-          const pickableRow = canPick(entry, status)
+          const pickableRow = canPick(entry, status, blocked)
+          const unavailable = entry.unavailable
+            ? unavailableText(
+                entry.unavailable.reason,
+                entry.unavailable.message
+              )
+            : blocked.get(entry.id)
           const name = position
             ? t('task.add.media.picker.partName', {
                 index: position,
@@ -150,14 +166,9 @@ export function MediaEntryList({
                     </span>
                   )}
                 </div>
-                {entry.unavailable && (
+                {unavailable && (
                   <p className="text-xs text-muted-foreground">
-                    {translate(
-                      unavailableText(
-                        entry.unavailable.reason,
-                        entry.unavailable.message
-                      )
-                    )}
+                    {translate(unavailable)}
                   </p>
                 )}
                 {rowStatus?.kind === 'created' && (

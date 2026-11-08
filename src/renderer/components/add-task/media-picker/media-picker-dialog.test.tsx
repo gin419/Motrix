@@ -491,6 +491,48 @@ describe('MediaPickerDialog', () => {
     })
   })
 
+  it('explains a part whose qualities turn out to be unavailable', async () => {
+    resolveWith((request) =>
+      request.entryIds
+        ? {
+            status: 'unavailable',
+            pluginId: 'example.media-resolver',
+            pluginName: 'Example Resolver',
+            reason: 'drm',
+          }
+        : {
+            status: 'ok',
+            preview: preview({
+              entries: [entry(1), entry(2, { variants: null })],
+            }),
+          }
+    )
+    renderDialog()
+    await screen.findByText('Sample Series')
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'P1 Episode 1' })
+    )
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'P2 Episode 2' })
+    )
+    expect(
+      await screen.findByText(
+        'This media is protected by DRM or encryption and can’t be downloaded.'
+      )
+    ).toBeInTheDocument()
+    // Protected media stays protected however often it is read.
+    expect(
+      screen.queryByRole('button', { name: 'Retry' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Couldn’t load the qualities of this part.')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('checkbox', { name: 'P2 Episode 2' })
+    ).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: 'Download (0)' })).toBeDisabled()
+  })
+
   it('marks qualities that need the missing FFmpeg', async () => {
     resolveWith({
       status: 'ok',

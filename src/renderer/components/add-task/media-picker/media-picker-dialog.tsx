@@ -37,6 +37,7 @@ import {
   planQualities,
   resolveProblemOffersPageAsFile,
   resolveProblemText,
+  unavailableText,
 } from './media-pick-plan'
 import { MediaQualitySelect } from './media-quality-select'
 import { useCreateMediaTask } from './use-create-media-task'
@@ -462,10 +463,16 @@ function ReadyView({
   const [notice, setNotice] = useState<string | null>(null)
   const unconfirmed = useRef(new Map(opening.unconfirmed))
 
+  // Deferred parts whose qualities came back unavailable can't be picked.
+  const blocked = new Map<string, MediaText>()
+  for (const [id, result] of entries.failed)
+    if (result?.status === 'unavailable')
+      blocked.set(id, unavailableText(result.reason, result.message))
   const picks = preview.entries.filter(
     (entry) =>
       selected.has(entry.id) &&
       isEntrySelectable(entry) &&
+      !blocked.has(entry.id) &&
       status.get(entry.id)?.kind !== 'created'
   )
   const pickIds = new Set(picks.map((entry) => entry.id))
@@ -619,6 +626,7 @@ function ReadyView({
           preview={preview}
           selected={selected}
           status={status}
+          blocked={blocked}
           disabled={creating}
           onSelectionChange={setSelected}
         />
