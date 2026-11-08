@@ -265,25 +265,29 @@ function StatusView({
             : t('task.add.media.picker.source', { plugin: pluginName })}
         </DialogDescription>
       </DialogHeader>
-      {resolving ? (
-        <div className="flex items-center justify-center py-6">
-          <Spinner className="size-5 text-muted-foreground" />
-        </div>
-      ) : (
-        <Alert variant={state.phase === 'problem' ? 'destructive' : 'default'}>
-          <AlertDescription className="whitespace-pre-line">
-            {message}
-          </AlertDescription>
-        </Alert>
-      )}
-      {pageFileError && (
-        <p
-          role="alert"
-          className="whitespace-pre-line text-xs text-destructive"
-        >
-          {pageFileError}
-        </p>
-      )}
+      <div className="-mx-1 flex min-h-0 flex-col gap-4 overflow-y-auto px-1">
+        {resolving ? (
+          <div className="flex items-center justify-center py-6">
+            <Spinner className="size-5 text-muted-foreground" />
+          </div>
+        ) : (
+          <Alert
+            variant={state.phase === 'problem' ? 'destructive' : 'default'}
+          >
+            <AlertDescription className="whitespace-pre-line">
+              {message}
+            </AlertDescription>
+          </Alert>
+        )}
+        {pageFileError && (
+          <p
+            role="alert"
+            className="whitespace-pre-line text-xs text-destructive"
+          >
+            {pageFileError}
+          </p>
+        )}
+      </div>
       <DialogFooter className="shrink-0">
         <Button
           type="button"
@@ -488,83 +492,96 @@ function ReadyView({
           {t('task.add.media.picker.source', { plugin: preview.pluginName })}
         </DialogDescription>
       </DialogHeader>
-      <MediaEntryList
-        preview={preview}
-        selected={selected}
-        status={status}
-        disabled={creating}
-        onSelectionChange={setSelected}
-      />
-      <div className="shrink-0 space-y-3">
-        <MediaQualitySelect
-          plan={plan}
-          value={qualityValue}
-          disabled={creating || picks.length === 0 || loadingQualities}
-          onChange={setQuality}
+      {/* Only the header and footer stay put: in a short window the list
+          shrinks first, then this region scrolls, so Download stays reachable. */}
+      <div
+        data-slot="media-picker-body"
+        className="-mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1"
+      >
+        <MediaEntryList
+          preview={preview}
+          selected={selected}
+          status={status}
+          disabled={creating}
+          onSelectionChange={setSelected}
         />
-        {loadingQualities && (
-          <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Spinner className="size-3" />
-            {t('task.add.media.picker.loadingQualities')}
-          </p>
-        )}
-        {qualityLoadFailed && single && (
-          <div className="flex items-center justify-between gap-2 text-xs text-destructive">
-            <span>{t('task.add.media.picker.qualitiesFailed')}</span>
-            <Button
-              type="button"
-              variant="link"
-              size="xs"
-              disabled={creating}
-              onClick={() => void loadEntries(preview, [single.id])}
-            >
-              {t('common.retry')}
-            </Button>
-          </div>
-        )}
-        {folder !== null && (
-          <div className="flex items-center justify-between gap-4">
-            <Label htmlFor={folderSwitchId} className="min-w-0 font-normal">
-              <span className="truncate">
-                {t('task.add.media.picker.saveToFolder', { folder })}
-              </span>
-            </Label>
-            <Switch
-              id={folderSwitchId}
-              checked={saveToFolder}
-              disabled={creating}
-              onCheckedChange={setSaveToFolder}
-            />
-          </div>
-        )}
-        {manyParts && (
-          <Alert>
-            <WarningIcon aria-hidden="true" />
-            <AlertDescription className="text-xs">
-              {t('task.add.media.picker.manyParts', {
-                selected: picks.length,
-                limit: preview.warnAboveParts,
-              })}
-            </AlertDescription>
-          </Alert>
-        )}
-        {showFfmpegHint && (
-          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-            <InfoIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-            {t('task.add.media.picker.ffmpegHint')}
-          </p>
-        )}
-        {showLoginHint && (
-          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-            <InfoIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-            {t('task.add.media.picker.loginHint')}
-          </p>
-        )}
-        {notice && (
-          <p role="alert" className="text-xs text-destructive">
-            {notice}
-          </p>
-        )}
+        <div className="shrink-0 space-y-3">
+          <MediaQualitySelect
+            plan={plan}
+            value={qualityValue}
+            disabled={creating || picks.length === 0 || loadingQualities}
+            onChange={setQuality}
+          />
+          {loadingQualities && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner className="size-3" />
+              {t('task.add.media.picker.loadingQualities')}
+            </p>
+          )}
+          {qualityLoadFailed && single && (
+            <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+              <span>{t('task.add.media.picker.qualitiesFailed')}</span>
+              <Button
+                type="button"
+                variant="link"
+                size="xs"
+                disabled={creating}
+                onClick={() => void loadEntries(preview, [single.id])}
+              >
+                {t('common.retry')}
+              </Button>
+            </div>
+          )}
+          {folder !== null && (
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor={folderSwitchId} className="min-w-0 font-normal">
+                <span className="truncate">
+                  {t('task.add.media.picker.saveToFolder', { folder })}
+                </span>
+              </Label>
+              <Switch
+                id={folderSwitchId}
+                checked={saveToFolder}
+                disabled={creating}
+                onCheckedChange={setSaveToFolder}
+              />
+            </div>
+          )}
+          {manyParts && (
+            <Alert>
+              <WarningIcon aria-hidden="true" />
+              <AlertDescription className="text-xs">
+                {t('task.add.media.picker.manyParts', {
+                  selected: picks.length,
+                  limit: preview.warnAboveParts,
+                })}
+              </AlertDescription>
+            </Alert>
+          )}
+          {showFfmpegHint && (
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <InfoIcon
+                className="mt-px size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+              {t('task.add.media.picker.ffmpegHint')}
+            </p>
+          )}
+          {showLoginHint && (
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <InfoIcon
+                className="mt-px size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+              {t('task.add.media.picker.loginHint')}
+            </p>
+          )}
+          {notice && (
+            <p role="alert" className="text-xs text-destructive">
+              {notice}
+            </p>
+          )}
+        </div>
       </div>
       <DialogFooter className="shrink-0">
         <Button
