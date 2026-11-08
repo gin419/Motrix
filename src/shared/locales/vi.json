@@ -1032,6 +1032,25 @@
       "createFailed": "Không thể tạo tác vụ tải xuống.",
       "createFailedWithReason": "Không thể tạo tác vụ tải xuống: {{reason}}",
       "mediaResolveFailed": "Tiện ích phân giải trang web không đọc được trang này nên chưa tải xuống. Hãy thử lại sau hoặc cập nhật tiện ích.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Nội dung này yêu cầu đăng nhập. Hãy đăng nhập trong phần cài đặt của tiện ích phân giải trang web rồi thử lại.",
+          "paidContent": "Nội dung này yêu cầu gói thành viên hoặc mua trên trang web.",
+          "previewOnly": "Nội dung này chỉ có bản xem trước.",
+          "protected": "Nội dung này được bảo vệ bằng DRM hoặc mã hóa nên không thể tải xuống.",
+          "geoRestricted": "Nội dung này không khả dụng ở khu vực của bạn.",
+          "rateLimited": "Trang web đang giới hạn yêu cầu. Hãy thử lại sau.",
+          "notFound": "Nội dung này đã bị gỡ hoặc không còn tồn tại.",
+          "liveUnsupported": "Không thể tải xuống phát trực tiếp.",
+          "unsupported": "Tiện ích phân giải trang web báo rằng không thể tải xuống nội dung này.",
+          "unsupportedWithDetail": "Tiện ích phân giải trang web báo rằng không thể tải xuống nội dung này: {{detail}}"
+        },
+        "failure": {
+          "timeout": "Tiện ích phân giải trang web không phản hồi kịp thời. Hãy thử lại sau.",
+          "noPlayableVariant": "Tiện ích phân giải trang web không tìm thấy định dạng nào của nội dung này có thể tải xuống.",
+          "streamUnavailable": "Không thể tải luồng nội dung mà tiện ích phân giải trang web đã chọn. Hãy thử lại sau."
+        }
+      },
       "createFailedByPlugin": "Không thể tạo tác vụ: tiện ích “{{pluginId}}” đã chặn tác vụ ({{detail}}). Hãy tắt tiện ích đó trong Cài đặt → Tiện ích rồi thử lại.",
       "createFailedPathTooLong": "Không thể tạo tác vụ: đường dẫn đích dài {{length}} ký tự, vượt giới hạn {{limit}} của Windows. Hãy chọn thư mục lưu hoặc tên tệp ngắn hơn.",
       "parseFailed": "Không thể phân tích tệp torrent.",

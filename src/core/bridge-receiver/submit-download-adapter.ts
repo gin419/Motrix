@@ -36,6 +36,8 @@ export interface AdaptedDirect {
   discoverFilename?: true
   kind: 'direct'
   primaryUrl: string
+  /** Same-file mirrors a site resolver offered for the stream. */
+  mirrorUrls?: string[]
   sanitizedHeaders: Record<string, string>
   cookies: readonly DownloadCookie[]
   sourceMeta: BridgeSourceMeta
@@ -50,6 +52,7 @@ export interface AdaptedMagnet {
 }
 
 export interface AdaptedHls {
+  receipt?: CreateRequestReceipt
   kind: 'hls'
   taskId: string
   saveDir: string
@@ -57,7 +60,8 @@ export interface AdaptedHls {
   manifestUrl: string
   sanitizedHeaders: Record<string, string>
   container: 'mp4' | 'mkv' | 'ts'
-  sourceMeta: BridgeSourceMeta
+  /** BridgeSourceMeta for extension submits; null for a desktop create. */
+  sourceMeta: SourceMeta
   durationSec?: number
 }
 

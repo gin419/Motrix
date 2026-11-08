@@ -1,11 +1,21 @@
+import path from 'node:path'
 import type { BridgeEventBus } from '@core/bridge/bridge-event-bus'
 import { IdempotencyCache } from '@core/bridge/idempotency-cache'
 import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
 import { newTaskId } from '@core/lib/ids'
+import {
+  dispatchMediaVariant,
+  planMediaName,
+} from '@core/media-resolve/dispatch-variant'
+import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
 import type { MediaRuntime } from '@core/media-resolve/media-runtime'
-import type { ResolveToMux } from '@core/media-resolve/resolve-to-mux'
+import {
+  type ResolvedMediaVariant,
+  resolveMediaVariant,
+} from '@core/media-resolve/resolve-media-variant'
+import { pickStreamHeaders } from '@core/media-resolve/site-resolution'
 import { MediaResolveError } from '@core/task/media-resolve-error'
-import { admitHttpSource } from '@core/task/source-admission'
+import { pathTooLongError } from '@core/task/path-length'
 import {
   type DownloadSubmitParams,
   ErrorCodes,
@@ -16,20 +26,17 @@ import { Events } from '@shared/protocol/events'
 import type { DownloadTask } from '@shared/types/task'
 import type { BridgeErrorCode } from './errors'
 import { BridgeReceiverError } from './errors'
-import { stripHopByHopHeaders } from './header-replay'
 import { DirectPipeline } from './pipelines/direct-pipeline'
 import { MagnetPipeline } from './pipelines/magnet-pipeline'
-import { ensureMediaExtension } from './pipelines/media-final-name'
 import {
   dispatchTaskUpdates,
   type TaskNotificationSink,
 } from './progress-mapping'
 import { ProgressPublisher } from './progress-publisher'
 import {
-  type AdaptedMux,
+  type AdaptedDirect,
   type AdapterDeps,
   SubmitDownloadAdapter,
-  sanitizeFilename,
 } from './submit-download-adapter'
 
 /**
@@ -71,14 +78,20 @@ export interface BridgeReceiverDeps {
   bridgeBus: BridgeEventBus
   localize: (code: BridgeErrorCode) => string
   /**
-   * Optional submit-path pre-resolver for direct submits. A mux pair re-routes
-   * the submit to the media runtime's MuxPipeline; null proceeds as a direct
-   * download. A matching resolver that fails throws MediaResolveError and the
-   * submit is rejected with appCode `media-resolve-failed` instead of
-   * downloading the page as a file. Submit cookies are forwarded to the
-   * resolver only (2nd arg).
+   * Translate an i18n key with its interpolation values, for the reason a
+   * site resolution failed. Absent, the key itself is the message (as
+   * `localize` returns codes on hosts without a translator).
    */
-  resolveToMux?: ResolveToMux
+  translate?: (key: string, values?: Record<string, string>) => string
+  /**
+   * Optional site resolution for direct submits. A resolved page is routed by
+   * its selected variant: a direct variant stays a direct download of the
+   * stream, mux/HLS/DASH go to the media runtime. A URL no resolver claims
+   * proceeds as a direct download. A matching resolver that fails is
+   * rejected with appCode `media-resolve-failed` instead of downloading the
+   * page as a file. Submit cookies are forwarded to the resolver only.
+   */
+  mediaResolve?: MediaResolveService
   /**
    * Optional startup gate awaited before any submit reaches a pipeline.
    * The bootstrap resolves it once engine start + SessionManager.restore()
@@ -90,6 +103,33 @@ export interface BridgeReceiverDeps {
    * (tests, Node shell back-compat).
    */
   waitForReady?: () => Promise<void>
+}
+
+/** The receiver error code closest to a site resolution failure. */
+function mediaFailureCode(error: MediaResolveError): BridgeErrorCode {
+  if (
+    error.failure === 'command-failed' ||
+    error.failure === 'timeout' ||
+    error.failure === 'stream-unavailable'
+  )
+    return 'transient-failure'
+  if (error.failure !== 'unavailable') return 'unsupported-kind'
+  switch (error.reason) {
+    case 'drm':
+    case 'encrypted':
+      return 'unsupported-encryption'
+    case 'live-unsupported':
+      return 'unsupported-live'
+    case 'not-found':
+    case 'removed':
+      return 'not-found'
+    case 'rate-limited':
+      return 'transient-failure'
+    case 'login-required':
+      return 'auth-expired'
+    default:
+      return 'unsupported-kind'
+  }
 }
 
 /**
@@ -202,84 +242,32 @@ export class BridgeReceiver {
     adapted: Awaited<ReturnType<SubmitDownloadAdapter['adapt']>>,
     params: DownloadSubmitParams
   ): Promise<{ taskId: string }> {
-    // Submit-path pre-resolve: if the adapted result is a direct download and
-    // a resolveToMux factory is wired (bootstrap only), call it. On a non-null
-    // mux pair the direct submit is transparently re-routed to MuxPipeline.
-    // A null means "no resolver claimed this URL — proceed as direct". A
-    // MediaResolveError means a resolver claimed it and failed: reject the
-    // submit rather than saving the page HTML under the video's name.
-    //
-    // Cookie handoff (bilibili HD): when the extension submits a direct download
-    // with cookies (e.g. SESSDATA for bilibili), serialize them into a Cookie
-    // header string and pass it as the 2nd arg to resolveToMux. The resolver
-    // attaches the header ONLY to api.bilibili.com calls — never to CDN URLs.
-    if (adapted.kind === 'direct' && this.deps.resolveToMux) {
+    // Submit-path site resolution: a direct submit whose URL a site resolver
+    // claims is routed by the variant the resolver offers. Cookies from the
+    // extension go to the resolver only (e.g. for a higher tier on the
+    // site's own API); the contract's header allowlist keeps them off
+    // stream requests.
+    if (adapted.kind === 'direct' && this.deps.mediaResolve) {
       const rawCookies =
         params.selection.kind === 'direct'
           ? params.selection.primary.cookies
           : []
-      const serialized = serializeCookieHeader(rawCookies)
-      const cookieHeader = serialized || undefined
-      let m: Awaited<ReturnType<ResolveToMux>>
+      const cookieHeader = serializeCookieHeader(rawCookies) || undefined
+      let picked: ResolvedMediaVariant | null
       try {
-        m = await this.deps.resolveToMux(adapted.primaryUrl, cookieHeader)
+        picked = await resolveMediaVariant(
+          this.deps.mediaResolve,
+          adapted.primaryUrl,
+          {
+            ...(cookieHeader ? { cookieHeader } : {}),
+            isFfmpegAvailable: async () =>
+              (await this.deps.media?.isFfmpegAvailable()) ?? false,
+          }
+        )
       } catch (error) {
-        if (error instanceof MediaResolveError) {
-          throw makeMdxpError(
-            ErrorCodes.AdapterError,
-            'Media page could not be resolved',
-            {
-              appCode: 'media-resolve-failed',
-              retryable:
-                error.failure === 'command-failed' ||
-                error.failure === 'timeout',
-              context: { pluginId: error.pluginId, failure: error.failure },
-            }
-          )
-        }
-        throw error
+        throw this.mediaResolveFailure(error)
       }
-      if (m) {
-        // Resolver output is a task source, not a plugin HTTP request: apply
-        // the same admission the desktop Add-Task path applies, before any
-        // name pick or pipeline work.
-        const videoUrl = admitHttpSource(m.videoUrl)
-        const audioUrl = admitHttpSource(m.audioUrl)
-        const media = this.deps.media
-        if (!media) {
-          throw new BridgeReceiverError(
-            'unsupported-kind',
-            'ffmpeg unavailable — mux pipeline not active'
-          )
-        }
-        // Prefer the resolver's human title over the URL-derived name (a bvid
-        // like BV1xxx is meaningless). Sanitize, append the container
-        // extension, THEN dedup — the pick must run on the on-disk name.
-        const titleBase = m.title ? sanitizeFilename(m.title).trim() : ''
-        const finalName = titleBase
-          ? await this.deps.pickName(
-              adapted.saveDir,
-              ensureMediaExtension(titleBase, m.container)
-            )
-          : adapted.finalName
-        const muxAdapted: AdaptedMux = {
-          kind: 'mux',
-          taskId: adapted.taskId,
-          saveDir: adapted.saveDir,
-          finalName,
-          videoUrl,
-          audioUrl,
-          sanitizedHeaders: m.headers
-            ? stripHopByHopHeaders(m.headers)
-            : adapted.sanitizedHeaders,
-          container: m.container,
-          sourceMeta: adapted.sourceMeta,
-          ...(adapted.sourceMeta.durationSec != null
-            ? { durationSec: adapted.sourceMeta.durationSec }
-            : {}),
-        }
-        return media.mux.dispatch(muxAdapted)
-      }
+      if (picked) return this.dispatchResolved(adapted, picked)
     }
 
     if (adapted.kind === 'magnet') {
@@ -304,6 +292,93 @@ export class BridgeReceiver {
       return this.deps.media.mux.dispatch(adapted)
     }
     return this.direct.dispatch(adapted)
+  }
+
+  private async dispatchResolved(
+    adapted: AdaptedDirect,
+    { media, entry, variant }: ResolvedMediaVariant
+  ): Promise<{ taskId: string }> {
+    // Dedup runs on the on-disk name, so the extension is part of the pick.
+    const planned = planMediaName(media, entry, variant)
+    const finalName = planned
+      ? await this.deps.pickName(adapted.saveDir, planned)
+      : adapted.finalName
+    // A direct stream is checked again by the create it becomes; a pipeline
+    // writes this name itself.
+    if (variant.source?.kind !== 'direct') {
+      const tooLong = pathTooLongError(
+        [path.join(adapted.saveDir, finalName)],
+        process.platform
+      )
+      if (tooLong) throw tooLong
+    }
+    const durationSec = entry.durationSec ?? adapted.sourceMeta.durationSec
+    const outcome = await dispatchMediaVariant(
+      variant,
+      {
+        taskId: adapted.taskId,
+        saveDir: adapted.saveDir,
+        finalName,
+        sourceMeta: adapted.sourceMeta,
+        ...(durationSec != null ? { durationSec } : {}),
+        // A stream without its own headers is requested like the browser
+        // requested the page, minus anything beyond the stream allowlist
+        // (no Authorization or custom headers; cookies never travel here).
+        fallbackHeaders: pickStreamHeaders(adapted.sanitizedHeaders),
+      },
+      this.deps.media
+    )
+    if (outcome.kind === 'dispatched') return { taskId: outcome.taskId }
+    // A progressive stream: a plain direct download of the resolved file.
+    // The page's cookies stay with the resolver; the stream gets only
+    // allowlisted headers.
+    const [primaryUrl = adapted.primaryUrl, ...mirrorUrls] = outcome.uris
+    const resolved: AdaptedDirect = {
+      ...adapted,
+      primaryUrl,
+      ...(mirrorUrls.length > 0 ? { mirrorUrls } : {}),
+      sanitizedHeaders: outcome.headers,
+      cookies: [],
+      finalName,
+    }
+    if (planned) delete resolved.discoverFilename
+    return this.direct.dispatch(resolved)
+  }
+
+  /**
+   * A resolver claimed the URL and failed: never download the page itself.
+   * The rejection carries the localized reason as its message and the
+   * closest receiver error code, so a client can tell "sign in" from
+   * "protected" from "try later" without a protocol change.
+   */
+  private mediaResolveFailure(error: unknown): unknown {
+    if (!(error instanceof MediaResolveError)) return error
+    // Only FFmpeg-dependent variants: the same rejection a media submit gets
+    // without FFmpeg, so clients keep their existing fallback.
+    if (error.failure === 'ffmpeg-required') {
+      return new BridgeReceiverError(
+        'unsupported-kind',
+        'ffmpeg is unavailable; configure it in Settings and retry'
+      )
+    }
+    const code = mediaFailureCode(error)
+    const { key, detail } = error.localizable
+    return makeMdxpError(
+      ErrorCodes.AdapterError,
+      this.deps.translate?.(key, detail ? { detail } : undefined) ??
+        error.message,
+      {
+        appCode: 'media-resolve-failed',
+        retryable: code === 'transient-failure',
+        context: {
+          pluginId: error.pluginId,
+          failure: error.failure,
+          code,
+          ...(error.reason ? { reason: error.reason } : {}),
+          ...(error.detail ? { detail: error.detail } : {}),
+        },
+      }
+    )
   }
 
   private readonly sink: TaskNotificationSink = {

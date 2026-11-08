@@ -2854,6 +2854,25 @@
       "createFailedPathTooLong": "No s'ha pogut crear la tasca: el camí de destinació té {{length}} caràcters i supera el límit de {{limit}} del Windows. Trieu un camí de carpeta o un nom de fitxer més curt.",
       "createFailedWithReason": "No s'ha pogut crear la tasca de baixada: {{reason}}",
       "mediaResolveFailed": "El connector de resolució del lloc no ha pogut llegir aquesta pàgina, així que no s'ha baixat. Torneu-ho a provar més tard o actualitzeu el connector.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Aquest contingut requereix iniciar la sessió. Inicieu la sessió a la configuració del connector de resolució del lloc i torneu-ho a provar.",
+          "paidContent": "Aquest contingut requereix una subscripció o una compra al seu lloc.",
+          "previewOnly": "Només hi ha disponible una previsualització d'aquest contingut.",
+          "protected": "Aquest contingut està protegit amb DRM o xifratge i no es pot baixar.",
+          "geoRestricted": "Aquest contingut no està disponible a la vostra regió.",
+          "rateLimited": "El lloc està limitant les sol·licituds. Torneu-ho a provar més tard.",
+          "notFound": "Aquest contingut s'ha eliminat o ja no existeix.",
+          "liveUnsupported": "Les emissions en directe no es poden baixar.",
+          "unsupported": "El connector de resolució del lloc indica que aquest contingut no es pot baixar.",
+          "unsupportedWithDetail": "El connector de resolució del lloc indica que aquest contingut no es pot baixar: {{detail}}"
+        },
+        "failure": {
+          "timeout": "El connector de resolució del lloc no ha respost a temps. Torneu-ho a provar més tard.",
+          "noPlayableVariant": "El connector de resolució del lloc no ha trobat cap format baixable per a aquest contingut.",
+          "streamUnavailable": "No s’ha pogut obtenir el flux que ha triat el connector de resolució del lloc. Torneu-ho a provar més tard."
+        }
+      },
       "created": "S'ha afegit la tasca",
       "createdCopy": "S'ha afegit una còpia independent",
       "createdPartial": "Afegides: {{ok}} · Fallides: {{failed}}",

@@ -2847,6 +2847,10 @@ async function initializeMainProcess(): Promise<void> {
       assertEngineReady: () => supervisor.assertReady(),
       reuseExistingBt: (taskId: string) =>
         reAddTaskAction(taskId, bridgeReAddDeps),
+      // MDXP download/add resolves pages like a desktop create; extension
+      // submits are resolved by the receiver and skip this seam.
+      mediaResolve,
+      media: activeMediaRuntime,
     }
     // Deps for the deleteFiles-aware task/remove (Spec 4) — a SEPARATE path
     // from the extension download/cancel closure below (which is always

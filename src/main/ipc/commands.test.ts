@@ -32,6 +32,7 @@ import {
 } from '@shared/types/task'
 import { storageTorrent } from '@test-utils/bt-storage'
 import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
+import { pastedMediaPage } from '@test-utils/media-resolve'
 import { makeDownloadTask } from '@test-utils/task'
 import { directTaskUpdatePublication } from '@test-utils/task-update'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -1638,7 +1639,10 @@ describe('process-scoped media wiring', () => {
   const VIDEO = 'https://cdn.example/v/1080.m4s'
   const AUDIO = 'https://cdn.example/a/hi.m4s'
 
-  function mediaCtx(bridgeRunning: boolean) {
+  function mediaCtx(
+    bridgeRunning: boolean,
+    overrides: Record<string, unknown> = {}
+  ) {
     const base = fakeCtx()
     const media = {
       mux: { dispatch: vi.fn(async () => ({ taskId: 'media-task' })) },
@@ -1694,6 +1698,7 @@ describe('process-scoped media wiring', () => {
       },
       media,
       mediaResolve,
+      ...overrides,
     }
     const handlers = buildCommandHandlers(ctx as unknown as CommandContext)
     return { ctx, media, mediaResolve, handlers }
@@ -1739,45 +1744,30 @@ describe('process-scoped media wiring', () => {
     expect(ctx.taskManager.remove).toHaveBeenCalledWith('m1')
   })
 
-  it('dispatches a resolved desktop paste into the process mux pipeline', async () => {
-    const { ctx, media, mediaResolve, handlers } = mediaCtx(true)
+  it('resolves a desktop paste into the process mux pipeline while the bridge is off', async () => {
+    const fixture = pastedMediaPage()
+    const { ctx, handlers } = mediaCtx(false, {
+      mediaResolve: fixture.mediaResolve,
+      media: fixture.media,
+    })
 
     await handlers[Commands.CreateTask]?.({
       type: 'http',
-      uris: [PAGE],
+      uris: [fixture.page],
       // An existing directory, so the pre-create mkdir stays quiet.
       saveDir: tmpdir(),
       headers: [],
     })
 
     // Desktop paste carries no browser cookies to the resolver.
-    expect(mediaResolve.resolve).toHaveBeenCalledExactlyOnceWith(PAGE, {})
-    expect(media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        kind: 'mux',
-        videoUrl: VIDEO,
-        audioUrl: AUDIO,
-        container: 'mp4',
-        sanitizedHeaders: { Referer: 'https://video.example/' },
-      })
+    expect(fixture.mediaResolve.resolve).toHaveBeenCalledExactlyOnceWith(
+      fixture.page,
+      {}
+    )
+    expect(fixture.media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining(fixture.expectedDispatch)
     )
     expect(ctx.rpcClient.addUri).not.toHaveBeenCalled()
-  })
-
-  it('keeps desktop paste resolution off while the bridge is off', async () => {
-    const { ctx, media, mediaResolve, handlers } = mediaCtx(false)
-
-    await handlers[Commands.CreateTask]?.({
-      type: 'http',
-      uris: [PAGE],
-      // An existing directory, so the pre-create mkdir stays quiet.
-      saveDir: tmpdir(),
-      headers: [],
-    })
-
-    expect(mediaResolve.resolve).not.toHaveBeenCalled()
-    expect(media.mux.dispatch).not.toHaveBeenCalled()
-    expect(ctx.rpcClient.addUri).toHaveBeenCalledOnce()
   })
 })
 

@@ -1,10 +1,5 @@
 import path from 'node:path'
-import { stripHopByHopHeaders } from '@core/bridge-receiver/header-replay'
-import { ensureMediaExtension } from '@core/bridge-receiver/pipelines/media-final-name'
-import {
-  type AdaptedMux,
-  sanitizeFilename,
-} from '@core/bridge-receiver/submit-download-adapter'
+import { BridgeReceiverError } from '@core/bridge-receiver/errors'
 import type {
   AddTorrentParams,
   CreateDownloadParams,
@@ -16,6 +11,17 @@ import { ensureDirectory } from '@core/fs/ensure-directory'
 import { sanitizeFinalizeFilename } from '@core/fs/finalize-path'
 import { newEngineTaskId, newTaskId } from '@core/lib/ids'
 import { getLogger } from '@core/logger'
+import {
+  dispatchMediaVariant,
+  type MediaDispatchTarget,
+  planMediaName,
+} from '@core/media-resolve/dispatch-variant'
+import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import {
+  type ResolvedMediaVariant,
+  resolveMediaVariant,
+} from '@core/media-resolve/resolve-media-variant'
+import { pickStreamHeaders } from '@core/media-resolve/site-resolution'
 import type { HookAuditLog } from '@core/plugin/hooks/audit-log'
 import type { HookOrchestrator } from '@core/plugin/hooks/hook-orchestrator'
 import type { StagedMetadataOp } from '@core/plugin/hooks/staged-effects'
@@ -99,11 +105,11 @@ import {
   sanitizeRemoteFilename,
 } from './direct-resource-validator'
 import type { FinalNamePicker } from './final-name-picker'
-import { findPathOverrun } from './path-length'
+import { MediaResolveError } from './media-resolve-error'
+import { pathTooLongError } from './path-length'
 import { toTempPath } from './paths'
 import {
   admitDownloadSources,
-  admitHttpSource,
   admitTaskCreateRequest,
   DownloadSourceError,
 } from './source-admission'
@@ -196,29 +202,19 @@ export interface CreateTaskDeps {
     operation: () => Promise<T>
   ) => Promise<T>
   /**
-   * Optional YouTube/bilibili pre-resolver. When present and the HTTP URL
-   * resolves to a mux pair (video + audio), the download is routed to the
-   * MuxPipeline instead of the normal HTTP engine path. Both deps must be
-   * present for the seam to fire; absence of either → unchanged HTTP path.
-   * Returns null when no resolver claims the URL (→ unchanged HTTP path) and
-   * throws MediaResolveError when a matching resolver fails; that error
-   * propagates as a task-creation failure so the page is never downloaded.
-   * The optional cookieHeader arg is for bilibili HD (desktop Add-Task path
-   * passes no cookies — only the extension submit path forwards them).
+   * Site resolution for HTTP creates. With both present, a URL an installed
+   * site resolver claims is resolved before the plugin hook chain: a mux,
+   * HLS or DASH variant is handed to the media runtime and the HTTP path is
+   * skipped; a direct variant replaces the request's source, headers and
+   * name and continues down the HTTP path. A URL no resolver claims is
+   * unchanged. A resolver that claims the URL and fails throws
+   * MediaResolveError, so the page is never downloaded under the video's
+   * name. The resolver gets no cookies, and a direct rewrite keeps only the
+   * request's allowlisted stream headers (never Cookie or Authorization).
    */
-  resolveToMux?: (
-    url: string,
-    cookieHeader?: string
-  ) => Promise<{
-    videoUrl: string
-    audioUrl: string
-    container: 'mp4' | 'mkv'
-    headers?: Record<string, string>
-    title?: string
-  } | null>
-  /** Dispatch an AdaptedMux to the shared MuxPipeline. Must be paired with
-   *  resolveToMux — both present or both absent. */
-  dispatchMux?: (adapted: AdaptedMux) => Promise<{ taskId: string }>
+  mediaResolve?: MediaResolveService
+  /** The process media runtime; must be paired with `mediaResolve`. */
+  media?: MediaDispatchTarget
   /** Re-adds a terminal BT task against its final layout with integrity
    * checking. Shell command handlers inject the existing reAddTask action. */
   reuseExistingBt?: (taskId: string) => Promise<void>
@@ -233,6 +229,11 @@ export interface CreateTaskDeps {
 export interface CreateTaskOptions {
   source?: TaskSource // default 'user'
   sourceMeta?: SourceMeta // default null
+  /**
+   * The caller already ran site resolution for this URL (an extension
+   * submit, with the browser's cookies) or the URL is a resolved stream.
+   */
+  skipMediaResolve?: boolean
   /** Ephemeral credentials; kept out of persisted task records and plugins. */
   cookies?: CreateDownloadParams['cookies']
   /** Engine option dictionary merged into the engine call: header
@@ -244,6 +245,8 @@ export interface CreateTaskOptions {
 
 type AdmittedCreateOptions = CreateTaskOptions & {
   receipt?: CreateRequestReceipt
+  /** The site resolver's pick for the request URL, resolved before admission. */
+  resolvedMedia?: ResolvedMediaVariant
 }
 
 /**
@@ -327,6 +330,16 @@ async function createAdmittedTask(
     const preparedDir = deps.prepareSaveDir
       ? await deps.prepareSaveDir(requestedDir)
       : requestedDir
+    // Site resolution can take a resolver's whole budget. It needs only the
+    // request URL, so it runs before the output admission and the applied
+    // proxy lease: a slow resolver must not hold up other creates into the
+    // same folder, or a proxy change.
+    const resolvedMedia = await resolveRequestMedia(
+      parsed.data.uris,
+      deps,
+      opts
+    )
+    if (resolvedMedia) opts = { ...opts, resolvedMedia }
     return withBtOutputAdmission(preparedDir, () =>
       policy
         ? policy.runWithSnapshot((snapshot, lease) =>
@@ -654,13 +667,8 @@ async function handleCreateTaskUnderAdmission(
       plannedPaths.push(path.join(finalPath, file.pathInsideRoot))
     }
   }
-  const overrun = findPathOverrun(plannedPaths, process.platform)
-  if (overrun) {
-    throw new AppError(
-      ErrorCode.TaskPathTooLong,
-      `task path too long: ${overrun.length}/${overrun.limit}: ${overrun.path}`
-    )
-  }
+  const tooLong = pathTooLongError(plannedPaths, process.platform)
+  if (tooLong) throw tooLong
 
   // Create the engine's directory before admission so aria2 can persist its
   // torrent metadata. Parsed BT maps payloads from its private metadata
@@ -767,74 +775,75 @@ async function handleCreateTaskUnderAdmission(
       params.filename = `${finalName}${INCOMPLETE_SUFFIX}`
     }
 
-    // 3.4. Mux pre-resolve seam (desktop Add-Task path).
-    // When both resolveToMux and dispatchMux are wired (bridge enabled +
-    // youtube/bilibili URL), call the resolver BEFORE beforeCreate fires.
-    // On a non-null mux pair, build an AdaptedMux reusing the already-computed
-    // taskId/saveDir/finalName, then delegate to MuxPipeline and return — the
-    // entire HTTP/beforeCreate/engine path is bypassed for this URL.
-    // On null (non-resolver URL, bridge disabled, plugin not enabled) → fall
-    // through to the unchanged HTTP path. No try/catch here: when a matching
-    // resolver fails the factory throws MediaResolveError, which must reach
-    // the caller as a creation failure — falling through would download the
-    // page HTML under the video's name.
-    if (deps.resolveToMux && deps.dispatchMux) {
-      const uri = params.uris[0]
-      if (uri) {
-        const muxResult = await deps.resolveToMux(uri)
-        if (muxResult) {
-          const sanitizedHeaders = muxResult.headers
-            ? stripHopByHopHeaders(muxResult.headers)
-            : {}
-          // DIAGNOSTIC: confirm the resolver returned distinct upos hosts and
-          // that the gatekeeper header (Referer) survives sanitize into the
-          // MediaJob. Logs HOSTS + header KEY presence only — never values.
-          log.info(
-            {
-              taskId,
-              videoHost: safeHost(muxResult.videoUrl),
-              audioHost: safeHost(muxResult.audioUrl),
-              sameUrl: muxResult.videoUrl === muxResult.audioUrl,
-              container: muxResult.container,
-              rawHeaderKeys: Object.keys(muxResult.headers ?? {}),
-              hasReferer: 'Referer' in sanitizedHeaders,
-              hasUserAgent: 'User-Agent' in sanitizedHeaders,
-            },
-            'mux resolve result'
-          )
-          // Prefer the resolver's human title over the URL-derived name (the
-          // bvid BV1xxx is meaningless). Sanitize, append the container
-          // extension, THEN dedup — the pick must run on the on-disk name.
-          const titleBase = muxResult.title
-            ? sanitizeFilename(muxResult.title).trim()
-            : ''
-          const muxFinalName = titleBase
-            ? await deps.finalNamePicker.pick(
-                effectiveSaveDir,
-                ensureMediaExtension(titleBase, muxResult.container)
-              )
-            : finalName
-          const adaptedMux: AdaptedMux = {
-            kind: 'mux',
-            taskId,
-            saveDir: effectiveSaveDir,
-            finalName: muxFinalName,
-            videoUrl: admitHttpSource(muxResult.videoUrl),
-            audioUrl: admitHttpSource(muxResult.audioUrl),
-            sanitizedHeaders,
-            container: muxResult.container,
-            // Desktop path: no extension session context; sourceMeta is null.
-            // MediaTaskCoordinator accepts SourceMeta (= BridgeSourceMeta | null).
-            sourceMeta: null,
-            receipt: opts.receipt,
-          }
-          const muxDispatchResult = await deps.dispatchMux(adaptedMux)
-          return {
-            outcome: 'created',
-            gid: muxDispatchResult.taskId,
-            taskId: muxDispatchResult.taskId,
-          }
+    // 3.4. Site resolution seam (desktop and Web Add-Task, MDXP download/add).
+    // The variant was picked before admission (see resolveRequestMedia).
+    // Routing runs BEFORE beforeCreate, reusing the computed taskId/saveDir:
+    // a pipeline variant (mux/HLS/DASH) hands the task to the media runtime
+    // and returns; a direct variant rewrites the request and falls through.
+    let mediaNamePlanned = false
+    let mediaRewritten = false
+    const picked = opts.resolvedMedia
+    if (picked) {
+      const { media, entry, variant } = picked
+      const planned = planMediaName(media, entry, variant)
+      const isDirect = variant.source?.kind === 'direct'
+      logMediaSelection(taskId, picked)
+      // Dedup runs on the on-disk name, extension included. A direct
+      // variant is re-picked below through the HTTP name path.
+      const mediaFinalName =
+        planned && !isDirect ? await pickHttpFinalName(planned) : finalName
+      // The destination check above ran on the page's name.
+      if (!isDirect) {
+        const tooLong = pathTooLongError(
+          [path.join(effectiveSaveDir, mediaFinalName)],
+          process.platform
+        )
+        if (tooLong) throw tooLong
+      }
+      const outcome = await dispatchMediaVariant(
+        variant,
+        {
+          taskId,
+          saveDir: effectiveSaveDir,
+          finalName: mediaFinalName,
+          sourceMeta: opts.sourceMeta ?? null,
+          ...(opts.receipt ? { receipt: opts.receipt } : {}),
+          ...(entry.durationSec !== undefined
+            ? { durationSec: entry.durationSec }
+            : {}),
+        },
+        deps.media
+      ).catch((error: unknown) => {
+        throw mediaDispatchFailure(media.pluginId, error)
+      })
+      if (outcome.kind === 'dispatched') {
+        return {
+          outcome: 'created',
+          gid: outcome.taskId,
+          taskId: outcome.taskId,
         }
+      }
+      mediaRewritten = true
+      params.uris = outcome.uris
+      // The request's headers were meant for the page, not for whatever
+      // stream host the resolver picked: only the contract's allowlisted
+      // headers carry over, so a Cookie or Authorization typed for the
+      // page never reaches a CDN or its mirrors.
+      params.cookies = undefined
+      const { userAgent, headers } = mergeStreamHeaders(
+        outcome.headers,
+        params.headers
+      )
+      params.headers = headers
+      if (userAgent !== undefined) params.userAgent = userAgent
+      if (planned && !req.filename?.trim()) {
+        await pickHttpName(planned)
+        mediaNamePlanned = true
+        const tooLong = pathTooLongError(
+          [diskPath, finalPath],
+          process.platform
+        )
+        if (tooLong) throw tooLong
       }
     }
 
@@ -863,9 +872,15 @@ async function handleCreateTaskUnderAdmission(
         sourceUrl: params.uris[0] ?? '',
         uris: [...params.uris],
         saveDir: effectiveSaveDir,
-        filename: desiredName,
+        // A resolved direct variant has already replaced the page's name.
+        filename: currentHttpDesiredName,
         connections: req.connections,
-        headers: req.headers.map((h) => ({ name: h.name, value: h.value })),
+        headers: mediaRewritten
+          ? Object.entries(params.headers ?? {}).map(([name, value]) => ({
+              name,
+              value,
+            }))
+          : req.headers.map((h) => ({ name: h.name, value: h.value })),
         proxy: req.proxy,
         createdBy: 'user',
         requestedAt: now,
@@ -967,7 +982,8 @@ async function handleCreateTaskUnderAdmission(
     // The hook may replace the source URI. Rebase the non-explicit fallback
     // name onto that final URI before probing, so a failed/empty metadata
     // response cannot resurrect the original request's basename.
-    if (!req.filename?.trim()) {
+    // A resolved media name is as authoritative as a manual one.
+    if (!req.filename?.trim() && !mediaNamePlanned) {
       await pickHttpName(uriBasename(params.uris[0]) ?? 'download')
     }
 
@@ -978,6 +994,7 @@ async function handleCreateTaskUnderAdmission(
     // Manual names remain authoritative and skip filename discovery.
     if (
       !req.filename?.trim() &&
+      !mediaNamePlanned &&
       params.uris.length === 1 &&
       metadataRequestProfile !== null &&
       deps.directResourceValidator?.probe
@@ -1519,6 +1536,108 @@ function uriBasename(uri: string | undefined): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Resolve an HTTP(S) request's first URL through the installed site
+ * resolvers. Null when no resolver claims it, the caller already resolved
+ * it, or resolution is not wired. No try/catch: a claimed URL whose
+ * resolver fails throws MediaResolveError, and falling through would
+ * download the page HTML under the video's name.
+ */
+async function resolveRequestMedia(
+  uris: readonly string[],
+  deps: CreateTaskDeps,
+  opts: AdmittedCreateOptions
+): Promise<ResolvedMediaVariant | null> {
+  if (!deps.mediaResolve || opts.skipMediaResolve) return null
+  const [pageUri] = admitDownloadSources(uris, 'input', [
+    'http',
+    'https',
+    'ftp',
+  ]).map((source) => source.sourceUrl)
+  if (!pageUri || pageUri.startsWith('ftp:')) return null
+  return resolveMediaVariant(deps.mediaResolve, pageUri, {
+    isFfmpegAvailable: async () =>
+      (await deps.media?.isFfmpegAvailable()) ?? false,
+  })
+}
+
+/** Kind, variant and hosts only: stream URLs are signed and never logged. */
+function logMediaSelection(taskId: string, picked: ResolvedMediaVariant): void {
+  const source = picked.variant.source
+  const urls =
+    source?.kind === 'direct'
+      ? [source.stream.url]
+      : source?.kind === 'mux'
+        ? [source.video.url, source.audio.url]
+        : source
+          ? [source.manifest.url]
+          : []
+  log.info(
+    {
+      taskId,
+      pluginId: picked.media.pluginId,
+      sourceKind: source?.kind,
+      variantId: picked.variant.id,
+      container: picked.variant.container,
+      hosts: urls.map(safeHost),
+    },
+    'media resolve selection'
+  )
+}
+
+/**
+ * Stream headers under the request's own: an allowlisted header the user
+ * supplied wins, matched case-insensitively; every other user header is
+ * dropped. User-Agent moves to the dedicated engine option so the task does
+ * not send two.
+ */
+function mergeStreamHeaders(
+  stream: Record<string, string>,
+  user: Record<string, string> | undefined
+): { headers: Record<string, string> | undefined; userAgent?: string } {
+  const merged = new Map<string, [string, string]>()
+  for (const [name, value] of Object.entries(stream)) {
+    merged.set(name.toLowerCase(), [name, value])
+  }
+  for (const [name, value] of Object.entries(pickStreamHeaders(user))) {
+    merged.set(name.toLowerCase(), [name, value])
+  }
+  const userAgent = merged.get('user-agent')?.[1]
+  merged.delete('user-agent')
+  const headers = Object.fromEntries(merged.values())
+  return {
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+    ...(userAgent !== undefined ? { userAgent } : {}),
+  }
+}
+
+/**
+ * A pipeline that refuses a resolved variant fails the create with the
+ * resolver's attribution and a reason the user can read: FFmpeg that
+ * vanished between selection and dispatch, a manifest or stream that could
+ * not be fetched, a playlist with nothing playable, or one that turns out
+ * encrypted or live. Nothing was created, so each is a definite rejection.
+ * Other errors pass unchanged.
+ */
+function mediaDispatchFailure(pluginId: string, error: unknown): unknown {
+  if (!(error instanceof BridgeReceiverError)) return error
+  if (error.code === 'unsupported-kind')
+    return new MediaResolveError(pluginId, 'ffmpeg-required', error)
+  if (error.code === 'transient-failure')
+    return new MediaResolveError(pluginId, 'stream-unavailable', error)
+  if (error.code === 'unsupported-master')
+    return new MediaResolveError(pluginId, 'no-playable-variant', error)
+  const reason =
+    error.code === 'unsupported-encryption'
+      ? 'encrypted'
+      : error.code === 'unsupported-live'
+        ? 'live-unsupported'
+        : null
+  return reason
+    ? new MediaResolveError(pluginId, 'unavailable', error, reason)
+    : error
 }
 
 /** Host of a URL for diagnostics, or a marker if it doesn't parse. */

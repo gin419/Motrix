@@ -9,13 +9,20 @@ import {
 } from '@core/media-resolve/media-runtime'
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
-import { DownloadSourceError } from '@core/task/source-admission'
+import { WINDOWS_MAX_PATH } from '@core/task/path-length'
 import { TaskManager } from '@core/task/task-manager'
 import { ErrorCodes } from '@motrix/mdxp'
 import { Events } from '@shared/protocol/events'
 import type { DownloadTask } from '@shared/types/task'
 import { TaskStatus } from '@shared/types/task'
 import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
+import {
+  directVariant,
+  fakeMediaResolve,
+  manifestVariant,
+  mediaResolution,
+  muxVariant,
+} from '@test-utils/media-resolve'
 import { makeDownloadTask } from '@test-utils/task'
 import { describe, expect, it, vi } from 'vitest'
 import { BridgeReceiver } from './bridge-receiver'
@@ -408,11 +415,15 @@ describe('BridgeReceiver', () => {
             async () =>
               '#EXTM3U\n#EXTINF:5,\nhttps://example.com/0.ts\n#EXT-X-ENDLIST'
           ),
-          resolveToMux: async () => ({
-            videoUrl: 'https://example.com/v.mp4',
-            audioUrl: 'https://example.com/a.m4a',
-            container: 'mp4' as const,
-          }),
+          mediaResolve: fakeMediaResolve(
+            mediaResolution(
+              '',
+              muxVariant(
+                'https://example.com/v.mp4',
+                'https://example.com/a.m4a'
+              )
+            )
+          ),
         })
         const receiver = new BridgeReceiver(deps as never)
         const submit = vi
@@ -571,20 +582,17 @@ describe('BridgeReceiver', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // resolveToMux seam tests (Task 5 — submit-path pre-resolve)
+  // Site resolution seam (submit-path pre-resolve)
   // ---------------------------------------------------------------------------
 
-  describe('resolveToMux seam', () => {
+  describe('site resolution seam', () => {
+    const PAGE = 'https://video.example/watch/abc'
     const directParams = {
-      source: {
-        pageUrl: 'https://www.youtube.com/watch?v=abc',
-        pageTitle: 'T',
-        detectedAt: 1,
-      },
+      source: { pageUrl: PAGE, pageTitle: 'T', detectedAt: 1 },
       selection: {
         kind: 'direct' as const,
         primary: {
-          url: 'https://www.youtube.com/watch?v=abc',
+          url: PAGE,
           headers: { 'x-custom': 'val' },
           cookies: [],
           refererPolicy: 'strict-origin-when-cross-origin' as const,
@@ -601,201 +609,372 @@ describe('BridgeReceiver', () => {
       },
     } as never
 
-    it('resolveToMux returning a mux pair routes direct submit to MuxPipeline (not DirectPipeline)', async () => {
-      // Set up resolveToMux to return a mux pair
-      const resolveToMux = vi.fn(async (_url: string) => ({
-        videoUrl: 'https://rr1.googlevideo.com/video.mp4',
-        audioUrl: 'https://rr1.googlevideo.com/audio.mp4',
-        container: 'mp4' as const,
-        headers: { 'x-ytdl': '1' },
-      }))
-
+    function mediaDeps(
+      raw: unknown,
+      over: Parameters<typeof fakeDeps>[0] = {}
+    ) {
+      const mediaResolve = fakeMediaResolve(raw)
       const deps = fakeDeps({
         ffmpegBinaryPath: '/usr/bin/ffmpeg',
         fetchManifest: vi.fn(async () => ''),
         taskManager: new TaskManager(),
         segmentAria2: fakeSegmentAria2,
-        resolveToMux,
+        mediaResolve,
+        ...over,
       })
-      const r = new BridgeReceiver(deps as never)
-
-      // Spy on mux.dispatch to verify routing without running the real pipeline
-      const mux = mediaOf(deps).mux
-      expect(mux).toBeDefined()
-      const muxDispatchSpy = vi
-        .spyOn(mux, 'dispatch')
-        .mockResolvedValue({ taskId: 'pre-resolved-mux-1' })
-
-      // Also spy on direct.dispatch to confirm it was NOT called
+      const receiver = new BridgeReceiver(deps as never)
       const direct = (
-        r as unknown as {
+        receiver as unknown as {
           direct: { dispatch: (...a: unknown[]) => Promise<{ taskId: string }> }
         }
       ).direct
+      return { deps, receiver, mediaResolve, direct }
+    }
+
+    it('routes a resolved mux variant to the media runtime, not DirectPipeline', async () => {
+      const { deps, receiver, direct } = mediaDeps(
+        mediaResolution(
+          '',
+          muxVariant(
+            'https://cdn.example/video.mp4',
+            'https://cdn.example/audio.mp4'
+          )
+        )
+      )
+      const muxDispatchSpy = vi
+        .spyOn(mediaOf(deps).mux, 'dispatch')
+        .mockResolvedValue({ taskId: 'pre-resolved-mux-1' })
       const directDispatchSpy = vi.spyOn(direct, 'dispatch')
 
-      const result = await r.handle(directParams, extCtx)
+      const result = await receiver.handle(directParams, extCtx)
 
       expect(result).toEqual({ taskId: 'pre-resolved-mux-1' })
-      expect(muxDispatchSpy).toHaveBeenCalledTimes(1)
       expect(directDispatchSpy).not.toHaveBeenCalled()
-
-      // The adapted taskId from the direct adapt must be reused in the mux call
-      const muxArg = muxDispatchSpy.mock.calls[0]?.[0] as {
-        kind: string
-        taskId: string
-        videoUrl: string
-        audioUrl: string
-        container: string
-      }
-      expect(muxArg.kind).toBe('mux')
-      expect(typeof muxArg.taskId).toBe('string')
-      expect(muxArg.videoUrl).toBe('https://rr1.googlevideo.com/video.mp4')
-      expect(muxArg.audioUrl).toBe('https://rr1.googlevideo.com/audio.mp4')
-      expect(muxArg.container).toBe('mp4')
-    })
-
-    it('re-picks the resolver title WITH its container extension (dedup runs on the on-disk name)', async () => {
-      const resolveToMux = vi.fn(async () => ({
-        videoUrl: 'https://v/v.mp4',
-        audioUrl: 'https://a/a.m4a',
-        container: 'mp4' as const,
-        title: 'Human Title',
-      }))
-      const picked: string[] = []
-      const deps = fakeDeps({
-        ffmpegBinaryPath: '/usr/bin/ffmpeg',
-        fetchManifest: vi.fn(async () => ''),
-        taskManager: new TaskManager(),
-        segmentAria2: fakeSegmentAria2,
-        resolveToMux,
-        pickName: async (_d: string, n: string) => {
-          picked.push(n)
-          return n
-        },
-      })
-      const r = new BridgeReceiver(deps as never)
-      const mux = mediaOf(deps).mux
-      const muxDispatchSpy = vi
-        .spyOn(mux, 'dispatch')
-        .mockResolvedValue({ taskId: 't' })
-
-      await r.handle(directParams, extCtx)
-
-      // The re-route pick must see the name that lands on disk — extension
-      // included — otherwise the dedup counter is computed on 'Human Title'
-      // while the file is 'Human Title.mp4'.
-      expect(picked).toContain('Human Title.mp4')
-      const muxArg = muxDispatchSpy.mock.calls[0]?.[0] as { finalName: string }
-      expect(muxArg.finalName).toBe('Human Title.mp4')
-    })
-
-    it('resolveToMux returning null falls through to direct dispatch (no regression)', async () => {
-      const resolveToMux = vi.fn(async (_url: string) => null)
-
-      const deps = fakeDeps({
-        resolveToMux,
-      })
-      const r = new BridgeReceiver(deps as never)
-
-      const result = await r.handle(directParams, extCtx)
-
-      // resolveToMux returned null → direct pipeline; createTask was called
-      expect(result.taskId).toBeDefined()
-      expect(deps.createTask).toHaveBeenCalledTimes(1)
-      // Empty cookies → cookieHeader is undefined (not forwarded)
-      expect(resolveToMux).toHaveBeenCalledWith(
-        'https://www.youtube.com/watch?v=abc',
-        undefined
+      expect(muxDispatchSpy).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          kind: 'mux',
+          taskId: expect.any(String),
+          videoUrl: 'https://cdn.example/video.mp4',
+          audioUrl: 'https://cdn.example/audio.mp4',
+          container: 'mp4',
+          sourceMeta: expect.objectContaining({ pageUrl: PAGE }),
+        })
       )
     })
 
+    it.each(['hls', 'dash'] as const)(
+      'routes a resolved %s variant to the HLS/DASH pipeline',
+      async (kind) => {
+        const { deps, receiver } = mediaDeps(
+          mediaResolution(
+            'Clip',
+            manifestVariant(kind, `https://cdn.example/${kind}`, {
+              Referer: 'https://video.example/',
+            })
+          )
+        )
+        const spy = vi
+          .spyOn(mediaOf(deps).hlsDash, 'dispatch')
+          .mockResolvedValue({ taskId: 'media-1' })
+        await expect(receiver.handle(directParams, extCtx)).resolves.toEqual({
+          taskId: 'media-1',
+        })
+        expect(spy).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            kind,
+            manifestUrl: `https://cdn.example/${kind}`,
+            sanitizedHeaders: { Referer: 'https://video.example/' },
+            finalName: 'Clip.mp4',
+          })
+        )
+        expect(deps.createTask).not.toHaveBeenCalled()
+      }
+    )
+
+    it('rejects a pipeline variant whose planned name makes the path too long', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+      try {
+        const { deps, receiver } = mediaDeps(
+          mediaResolution(
+            'T'.repeat(60),
+            manifestVariant('hls', 'https://cdn.example/hls')
+          ),
+          {
+            getDefaultSaveDir: () => `/${'d'.repeat(WINDOWS_MAX_PATH - 40)}`,
+          }
+        )
+        const spy = vi.spyOn(mediaOf(deps).hlsDash, 'dispatch')
+        await expect(receiver.handle(directParams, extCtx)).rejects.toThrow(
+          /^task path too long: /
+        )
+        expect(spy).not.toHaveBeenCalled()
+      } finally {
+        if (platform) Object.defineProperty(process, 'platform', platform)
+      }
+    })
+
+    it.each([
+      [
+        'mux',
+        muxVariant('https://cdn.example/v.mp4', 'https://cdn.example/a.mp4'),
+      ],
+      ['hls', manifestVariant('hls', 'https://cdn.example/hls')],
+    ] as const)(
+      'requests a %s stream that declares no headers with the allowlisted browser headers',
+      async (kind, variant) => {
+        const { deps, receiver } = mediaDeps(mediaResolution('Clip', variant))
+        const target =
+          kind === 'mux' ? mediaOf(deps).mux : mediaOf(deps).hlsDash
+        const spy = vi
+          .spyOn(target, 'dispatch')
+          .mockResolvedValue({ taskId: 'media-1' })
+        const params = structuredClone(directParams)
+        params.selection.primary.headers = {
+          Referer: 'https://video.example/watch/abc',
+          'User-Agent': 'Browser/1',
+          Authorization: 'Bearer page-token',
+          'x-custom': 'val',
+        } as typeof params.selection.primary.headers
+        await receiver.handle(params, extCtx)
+        const adapted = spy.mock.calls[0]?.[0] as {
+          sanitizedHeaders: Record<string, string>
+        }
+        expect(adapted.sanitizedHeaders).toEqual({
+          Referer: 'https://video.example/watch/abc',
+          'User-Agent': 'Browser/1',
+        })
+      }
+    )
+
+    it('downloads a resolved direct variant as a direct task without the page cookies', async () => {
+      const { deps, receiver } = mediaDeps(
+        mediaResolution(
+          'Clip',
+          directVariant('https://cdn.example/360.mp4', {
+            mirrors: ['https://mirror.example/360.mp4'],
+            headers: { Referer: 'https://video.example/' },
+          })
+        ),
+        { ffmpegBinaryPath: null }
+      )
+      const params = structuredClone(directParams)
+      params.selection.primary.cookies = [
+        {
+          name: 'sid',
+          value: 'secret',
+          domain: '.video.example',
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'lax',
+        },
+      ] as never
+
+      await receiver.handle(params, extCtx)
+
+      expect(deps.createTask).toHaveBeenCalledOnce()
+      const [req, , options] = vi.mocked(deps.createTask).mock
+        .calls[0] as unknown as [
+        Record<string, unknown>,
+        unknown,
+        Record<string, unknown>,
+      ]
+      expect(req).toMatchObject({
+        uris: ['https://cdn.example/360.mp4', 'https://mirror.example/360.mp4'],
+        filename: 'Clip.mp4',
+        headers: [{ name: 'Referer', value: 'https://video.example/' }],
+      })
+      expect(options.cookies).toEqual([])
+    })
+
+    it('re-picks the resolver title WITH its container extension (dedup runs on the on-disk name)', async () => {
+      const picked: string[] = []
+      const { deps, receiver } = mediaDeps(
+        mediaResolution(
+          'Human Title',
+          muxVariant('https://cdn.example/v.mp4', 'https://cdn.example/a.m4a')
+        ),
+        {
+          pickName: async (_d: string, n: string) => {
+            picked.push(n)
+            return n
+          },
+        }
+      )
+      const muxDispatchSpy = vi
+        .spyOn(mediaOf(deps).mux, 'dispatch')
+        .mockResolvedValue({ taskId: 't' })
+
+      await receiver.handle(directParams, extCtx)
+
+      expect(picked).toContain('Human Title.mp4')
+      expect(muxDispatchSpy.mock.calls[0]?.[0]).toMatchObject({
+        finalName: 'Human Title.mp4',
+      })
+    })
+
+    it('falls through to direct dispatch when no resolver claims the URL', async () => {
+      const { deps, receiver, mediaResolve } = mediaDeps(null)
+
+      const result = await receiver.handle(directParams, extCtx)
+
+      expect(result.taskId).toBeDefined()
+      expect(deps.createTask).toHaveBeenCalledTimes(1)
+      // Empty cookies are not forwarded.
+      expect(mediaResolve.resolve).toHaveBeenCalledWith(PAGE, {})
+    })
+
     it('rejects the submit when a matching resolver fails instead of downloading the page directly', async () => {
-      const resolveToMux = vi.fn(async () => {
+      const { deps, receiver } = mediaDeps(() => {
         throw new MediaResolveError(
           'community.site-resolver',
           'command-failed',
           new Error('timed out')
         )
       })
-      const deps = fakeDeps({ resolveToMux })
-      const r = new BridgeReceiver(deps as never)
 
-      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
-        code: ErrorCodes.AdapterError,
-        data: {
-          appCode: 'media-resolve-failed',
-          retryable: true,
-          context: {
-            pluginId: 'community.site-resolver',
-            failure: 'command-failed',
+      await expect(receiver.handle(directParams, extCtx)).rejects.toMatchObject(
+        {
+          code: ErrorCodes.AdapterError,
+          data: {
+            appCode: 'media-resolve-failed',
+            retryable: true,
+            context: {
+              pluginId: 'community.site-resolver',
+              failure: 'command-failed',
+            },
           },
-        },
-      })
+        }
+      )
       expect(deps.createTask).not.toHaveBeenCalled()
     })
 
     it('marks an invalid resolver result as not retryable', async () => {
-      const resolveToMux = vi.fn(async () => {
-        throw new MediaResolveError('community.site-resolver', 'invalid-result')
-      })
-      const deps = fakeDeps({ resolveToMux })
-      const r = new BridgeReceiver(deps as never)
+      const { deps, receiver } = mediaDeps({ kind: 'mux', video: {} })
 
-      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
-        data: { appCode: 'media-resolve-failed', retryable: false },
-      })
+      await expect(receiver.handle(directParams, extCtx)).rejects.toMatchObject(
+        { data: { appCode: 'media-resolve-failed', retryable: false } }
+      )
       expect(deps.createTask).not.toHaveBeenCalled()
     })
 
-    it('keeps a resolver timeout retryable, as it was before timeouts had their own failure', async () => {
-      const resolveToMux = vi.fn(async () => {
+    it('keeps a resolver timeout retryable', async () => {
+      const { receiver } = mediaDeps(() => {
         throw new MediaResolveError('example.media-resolver', 'timeout')
       })
-      const deps = fakeDeps({ resolveToMux })
-      const r = new BridgeReceiver(deps as never)
 
-      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
-        data: {
-          appCode: 'media-resolve-failed',
-          retryable: true,
-          context: { failure: 'timeout' },
+      await expect(receiver.handle(directParams, extCtx)).rejects.toMatchObject(
+        {
+          data: {
+            appCode: 'media-resolve-failed',
+            retryable: true,
+            context: { failure: 'timeout' },
+          },
+        }
+      )
+    })
+
+    it.each([
+      ['login-required', 'auth-expired', false],
+      ['drm', 'unsupported-encryption', false],
+      ['live-unsupported', 'unsupported-live', false],
+      ['removed', 'not-found', false],
+      ['rate-limited', 'transient-failure', true],
+      ['region-locked', 'unsupported-kind', false],
+    ] as const)(
+      'rejects unavailable media (%s) with its localized reason and code %s',
+      async (reason, code, retryable) => {
+        const { deps, receiver } = mediaDeps(
+          { kind: 'unavailable', reason },
+          { translate: (key: string) => `t:${key}` }
+        )
+        await expect(
+          receiver.handle(directParams, extCtx)
+        ).rejects.toMatchObject({
+          code: ErrorCodes.AdapterError,
+          message: expect.stringMatching(/^t:task\.add\.media\.unavailable\./),
+          data: {
+            appCode: 'media-resolve-failed',
+            retryable,
+            context: { failure: 'unavailable', reason, code },
+          },
+        })
+        expect(deps.createTask).not.toHaveBeenCalled()
+      }
+    )
+
+    it('passes the resolver message of an unrecognized reason to the extension', async () => {
+      const translate = vi.fn(
+        (key: string, values?: Record<string, string>) =>
+          `t:${key}:${values?.detail ?? ''}`
+      )
+      const { receiver } = mediaDeps(
+        {
+          kind: 'unavailable',
+          reason: 'age-gated',
+          message: 'Confirm your age in the plugin settings',
         },
-      })
+        { translate }
+      )
+      await expect(receiver.handle(directParams, extCtx)).rejects.toMatchObject(
+        {
+          message:
+            't:task.add.media.unavailable.unsupportedWithDetail:Confirm your age in the plugin settings',
+          data: {
+            context: {
+              reason: 'age-gated',
+              detail: 'Confirm your age in the plugin settings',
+            },
+          },
+        }
+      )
+    })
+
+    it('rejects FFmpeg-only variants without FFmpeg like any media submit', async () => {
+      const { deps, receiver } = mediaDeps(
+        mediaResolution(
+          'Clip',
+          muxVariant('https://cdn.example/v.mp4', 'https://cdn.example/a.m4a')
+        ),
+        { ffmpegBinaryPath: null, media: undefined }
+      )
+      await expect(receiver.handle(directParams, extCtx)).rejects.toMatchObject(
+        { name: 'BridgeReceiverError', code: 'unsupported-kind' }
+      )
+      expect(deps.createTask).not.toHaveBeenCalled()
     })
 
     it.each([
       ['a non-http scheme', 'ftp://cdn.example/video.m4s'],
       ['embedded credentials', 'https://user:secret@cdn.example/video.m4s'],
     ])(
-      'rejects resolver stream URLs with %s before any mux dispatch',
+      'rejects resolver stream URLs with %s before any dispatch',
       async (_label, videoUrl) => {
-        const resolveToMux = vi.fn(async () => ({
-          videoUrl,
-          audioUrl: 'https://cdn.example/audio.m4s',
-          container: 'mp4' as const,
-        }))
-        const deps = fakeDeps({
-          ffmpegBinaryPath: '/usr/bin/ffmpeg',
-          fetchManifest: vi.fn(async () => ''),
-          taskManager: new TaskManager(),
-          segmentAria2: fakeSegmentAria2,
-          resolveToMux,
-        })
-        const r = new BridgeReceiver(deps as never)
-        const mux = mediaOf(deps).mux
-        const muxDispatchSpy = vi.spyOn(mux, 'dispatch')
-
-        await expect(r.handle(directParams, extCtx)).rejects.toBeInstanceOf(
-          DownloadSourceError
+        const { deps, receiver, direct } = mediaDeps(
+          mediaResolution(
+            'Clip',
+            muxVariant(videoUrl, 'https://cdn.example/audio.m4s')
+          )
         )
+        const muxDispatchSpy = vi.spyOn(mediaOf(deps).mux, 'dispatch')
+        const directDispatchSpy = vi.spyOn(direct, 'dispatch')
+
+        await expect(
+          receiver.handle(directParams, extCtx)
+        ).rejects.toMatchObject({
+          data: {
+            appCode: 'media-resolve-failed',
+            context: { failure: 'invalid-result' },
+          },
+        })
         expect(muxDispatchSpy).not.toHaveBeenCalled()
+        expect(directDispatchSpy).not.toHaveBeenCalled()
         expect(deps.createTask).not.toHaveBeenCalled()
       }
     )
 
-    it('resolveToMux absent (undefined) falls through to direct dispatch (full no-regression)', async () => {
-      // When resolveToMux is not set at all, direct submit proceeds as before
+    it('falls through to direct dispatch when no resolve service is wired', async () => {
       const deps = fakeDeps()
       const r = new BridgeReceiver(deps as never)
 
@@ -838,7 +1017,7 @@ describe('BridgeReceiver', () => {
   // BridgeReceiver cookie seam tests (BIL-HD)
   // ---------------------------------------------------------------------------
 
-  describe('cookie seam: resolveToMux receives cookieHeader', () => {
+  describe('cookie seam: the resolver receives the cookie header', () => {
     const bilibiliPageParams = {
       source: {
         pageUrl: 'https://www.bilibili.com/video/BV1xx411c7mD',
@@ -884,19 +1063,19 @@ describe('BridgeReceiver', () => {
       },
     } as never
 
-    it('direct submit with cookies → resolveToMux called with serialized cookie header as 2nd arg', async () => {
-      const resolveToMux = vi.fn(async () => null)
-      const deps = fakeDeps({ resolveToMux })
+    it('direct submit with cookies → the resolver gets the serialized cookie header', async () => {
+      const mediaResolve = fakeMediaResolve(null)
+      const deps = fakeDeps({ mediaResolve })
       const r = new BridgeReceiver(deps as never)
       await r.handle(bilibiliPageParams, extCtx)
-      expect(resolveToMux).toHaveBeenCalledWith(
+      expect(mediaResolve.resolve).toHaveBeenCalledWith(
         'https://www.bilibili.com/video/BV1xx411c7mD',
-        'SESSDATA=abc; bili_jct=x'
+        { cookieHeader: 'SESSDATA=abc; bili_jct=x' }
       )
     })
 
-    it('direct submit with empty cookies → resolveToMux called with url only (2nd arg undefined)', async () => {
-      const resolveToMux = vi.fn(async () => null)
+    it('direct submit with empty cookies → the resolver gets no cookie header', async () => {
+      const mediaResolve = fakeMediaResolve(null)
       const paramsNoCookies = {
         ...bilibiliPageParams,
         selection: {
@@ -907,13 +1086,12 @@ describe('BridgeReceiver', () => {
           },
         },
       }
-      const deps = fakeDeps({ resolveToMux })
+      const deps = fakeDeps({ mediaResolve })
       const r = new BridgeReceiver(deps as never)
       await r.handle(paramsNoCookies, extCtx)
-      // 2nd arg should be undefined (empty cookies → no cookie forwarding)
-      expect(resolveToMux).toHaveBeenCalledWith(
+      expect(mediaResolve.resolve).toHaveBeenCalledWith(
         'https://www.bilibili.com/video/BV1xx411c7mD',
-        undefined
+        {}
       )
     })
   })

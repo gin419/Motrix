@@ -1,3 +1,5 @@
+import { AppError, ErrorCode } from '@shared/errors'
+
 // Windows' legacy MAX_PATH (260) does not bound downloads: since
 // 1.37.0-motrix.16 aria2c passes any path of 248+ characters through the \\?\
 // namespace (resolved with GetFullPathNameW, following Rust std and Go), so it
@@ -81,4 +83,22 @@ export function findPathOverrun(
     }
   }
   return worst
+}
+
+/**
+ * The pre-create rejection for destinations the platform cannot open, or
+ * null when every one fits. The message carries the counts and the worst
+ * path for the renderer's `task path too long` parser.
+ */
+export function pathTooLongError(
+  candidates: readonly string[],
+  platform: NodeJS.Platform | string
+): AppError | null {
+  const overrun = findPathOverrun(candidates, platform)
+  return overrun
+    ? new AppError(
+        ErrorCode.TaskPathTooLong,
+        `task path too long: ${overrun.length}/${overrun.limit}: ${overrun.path}`
+      )
+    : null
 }

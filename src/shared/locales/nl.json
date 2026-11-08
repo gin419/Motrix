@@ -2834,6 +2834,25 @@
       "createFailedPathTooLong": "De taak kon niet worden aangemaakt: het doelpad bevat {{length}} tekens, meer dan de Windows-limiet van {{limit}}. Kies een kortere opslagmap of bestandsnaam.",
       "createFailedWithReason": "De downloadtaak kon niet worden aangemaakt: {{reason}}",
       "mediaResolveFailed": "De site-resolverplug-in kon deze pagina niet lezen, dus er is niets gedownload. Probeer het later opnieuw of werk de plug-in bij.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Voor deze media moet je inloggen. Log in via de instellingen van de site-resolverplug-in en probeer het opnieuw.",
+          "paidContent": "Voor deze media is een abonnement of aankoop op de site vereist.",
+          "previewOnly": "Van deze media is alleen een voorvertoning beschikbaar.",
+          "protected": "Deze media is beveiligd met DRM of versleuteling en kan niet worden gedownload.",
+          "geoRestricted": "Deze media is niet beschikbaar in jouw regio.",
+          "rateLimited": "De site beperkt het aantal verzoeken. Probeer het later opnieuw.",
+          "notFound": "Deze media is verwijderd of bestaat niet meer.",
+          "liveUnsupported": "Livestreams kunnen niet worden gedownload.",
+          "unsupported": "De site-resolverplug-in meldt dat deze media niet kan worden gedownload.",
+          "unsupportedWithDetail": "De site-resolverplug-in meldt dat deze media niet kan worden gedownload: {{detail}}"
+        },
+        "failure": {
+          "timeout": "De site-resolverplug-in reageerde niet op tijd. Probeer het later opnieuw.",
+          "noPlayableVariant": "De site-resolverplug-in heeft geen downloadbaar formaat voor deze media gevonden.",
+          "streamUnavailable": "De mediastream die de site-resolverplug-in koos, kon niet worden opgehaald. Probeer het later opnieuw."
+        }
+      },
       "created": "Taak toegevoegd",
       "createdCopy": "Afzonderlijke kopie toegevoegd",
       "createdPartial": "{{ok}} toegevoegd · {{failed}} mislukt",

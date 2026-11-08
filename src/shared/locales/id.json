@@ -1032,6 +1032,25 @@
       "createFailed": "Gagal membuat tugas unduhan.",
       "createFailedWithReason": "Gagal membuat tugas unduhan: {{reason}}",
       "mediaResolveFailed": "Plugin resolver situs tidak dapat membaca halaman ini, sehingga halaman tidak diunduh. Coba lagi nanti atau perbarui plugin.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Media ini memerlukan masuk akun. Masuk melalui pengaturan plugin resolver situs, lalu coba lagi.",
+          "paidContent": "Media ini memerlukan langganan atau pembelian di situsnya.",
+          "previewOnly": "Hanya pratinjau media ini yang tersedia.",
+          "protected": "Media ini dilindungi DRM atau enkripsi dan tidak dapat diunduh.",
+          "geoRestricted": "Media ini tidak tersedia di wilayah Anda.",
+          "rateLimited": "Situs sedang membatasi permintaan. Coba lagi nanti.",
+          "notFound": "Media ini telah dihapus atau tidak ada lagi.",
+          "liveUnsupported": "Siaran langsung tidak dapat diunduh.",
+          "unsupported": "Plugin resolver situs melaporkan bahwa media ini tidak dapat diunduh.",
+          "unsupportedWithDetail": "Plugin resolver situs melaporkan bahwa media ini tidak dapat diunduh: {{detail}}"
+        },
+        "failure": {
+          "timeout": "Plugin resolver situs tidak merespons tepat waktu. Coba lagi nanti.",
+          "noPlayableVariant": "Plugin resolver situs tidak menemukan format media ini yang dapat diunduh.",
+          "streamUnavailable": "Stream media yang dipilih plugin resolver situs tidak dapat diambil. Coba lagi nanti."
+        }
+      },
       "createFailedByPlugin": "Tugas tidak dapat dibuat: plugin “{{pluginId}}” menghentikannya ({{detail}}). Nonaktifkan plugin tersebut di Pengaturan → Plugin, lalu coba lagi.",
       "createFailedPathTooLong": "Tugas tidak dapat dibuat: panjang jalur tujuan adalah {{length}} karakter, melebihi batas Windows yaitu {{limit}}. Pilih jalur folder penyimpanan atau nama berkas yang lebih pendek.",
       "parseFailed": "Gagal mengurai berkas torrent.",

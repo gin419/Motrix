@@ -81,6 +81,7 @@ export class HlsDashPipeline {
           saveDir: adapted.saveDir,
           finalName,
           sourceMeta: adapted.sourceMeta,
+          ...(adapted.receipt ? { receipt: adapted.receipt } : {}),
           ...(adapted.durationSec !== undefined
             ? { durationSec: adapted.durationSec }
             : {}),
@@ -139,6 +140,7 @@ export class HlsDashPipeline {
           saveDir: adapted.saveDir,
           finalName,
           sourceMeta: adapted.sourceMeta,
+          ...(adapted.receipt ? { receipt: adapted.receipt } : {}),
           ...(adapted.durationSec !== undefined
             ? { durationSec: adapted.durationSec }
             : {}),
@@ -159,6 +161,7 @@ export class HlsDashPipeline {
         saveDir: adapted.saveDir,
         finalName,
         sourceMeta: adapted.sourceMeta,
+        ...(adapted.receipt ? { receipt: adapted.receipt } : {}),
         ...(adapted.durationSec !== undefined
           ? { durationSec: adapted.durationSec }
           : {}),

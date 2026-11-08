@@ -1032,6 +1032,25 @@
       "createFailed": "無法建立下載任務。",
       "createFailedWithReason": "無法建立下載任務：{{reason}}",
       "mediaResolveFailed": "網站解析外掛無法讀取此頁面，因此未下載。請稍後重試或更新外掛。",
+      "media": {
+        "unavailable": {
+          "loginRequired": "此媒體需要登入。請在網站解析外掛的設定中登入後重試。",
+          "paidContent": "此媒體需要在其網站上加入會員或購買。",
+          "previewOnly": "此媒體僅提供預覽。",
+          "protected": "此媒體受 DRM 或加密保護，無法下載。",
+          "geoRestricted": "此媒體在目前地區無法使用。",
+          "rateLimited": "該網站正在限制請求。請稍後重試。",
+          "notFound": "此媒體已被移除或不存在。",
+          "liveUnsupported": "無法下載直播。",
+          "unsupported": "網站解析外掛回報此媒體無法下載。",
+          "unsupportedWithDetail": "網站解析外掛回報此媒體無法下載：{{detail}}"
+        },
+        "failure": {
+          "timeout": "網站解析外掛未能及時回應。請稍後重試。",
+          "noPlayableVariant": "網站解析外掛找不到此媒體可下載的格式。",
+          "streamUnavailable": "無法取得網站解析外掛選定的媒體串流。請稍後重試。"
+        }
+      },
       "createFailedByPlugin": "建立任務失敗：外掛「{{pluginId}}」中斷了任務建立（{{detail}}）。可在「設定 → 外掛」中停用該外掛後重試。",
       "createFailedPathTooLong": "建立任務失敗：目標路徑長 {{length}} 個字元，超出 Windows 上限 {{limit}}。請改用更短的儲存目錄或檔名。",
       "parseFailed": "無法解析 Torrent 檔案。",

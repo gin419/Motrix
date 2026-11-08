@@ -1056,6 +1056,25 @@
       "createFailed": "No se pudo crear la tarea de descarga.",
       "createFailedWithReason": "No se pudo crear la tarea de descarga: {{reason}}",
       "mediaResolveFailed": "El plugin de resolución del sitio no pudo leer esta página, así que no se descargó. Vuelve a intentarlo más tarde o actualiza el plugin.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Este contenido requiere iniciar sesión. Inicia sesión en los ajustes del plugin de resolución del sitio y vuelve a intentarlo.",
+          "paidContent": "Este contenido requiere una suscripción o una compra en su sitio.",
+          "previewOnly": "Solo hay una vista previa disponible de este contenido.",
+          "protected": "Este contenido está protegido con DRM o cifrado y no se puede descargar.",
+          "geoRestricted": "Este contenido no está disponible en tu región.",
+          "rateLimited": "El sitio está limitando las solicitudes. Vuelve a intentarlo más tarde.",
+          "notFound": "Este contenido se eliminó o ya no existe.",
+          "liveUnsupported": "Las transmisiones en directo no se pueden descargar.",
+          "unsupported": "El plugin de resolución del sitio indica que este contenido no se puede descargar.",
+          "unsupportedWithDetail": "El plugin de resolución del sitio indica que este contenido no se puede descargar: {{detail}}"
+        },
+        "failure": {
+          "timeout": "El plugin de resolución del sitio no respondió a tiempo. Vuelve a intentarlo más tarde.",
+          "noPlayableVariant": "El plugin de resolución del sitio no encontró ningún formato descargable para este contenido.",
+          "streamUnavailable": "No se pudo obtener la transmisión que eligió el plugin de resolución del sitio. Vuelve a intentarlo más tarde."
+        }
+      },
       "createFailedByPlugin": "No se pudo crear la tarea: el plugin «{{pluginId}}» la detuvo ({{detail}}). Desactiva ese plugin en Ajustes → Plugins y vuelve a intentarlo.",
       "createFailedPathTooLong": "No se pudo crear la tarea: la ruta de destino tiene {{length}} caracteres y supera el límite de {{limit}} de Windows. Elige una carpeta o un nombre de archivo más corto.",
       "parseFailed": "No se pudo analizar el archivo torrent.",

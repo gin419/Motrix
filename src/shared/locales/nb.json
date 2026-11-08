@@ -2834,6 +2834,25 @@
       "createFailedPathTooLong": "Kunne ikke opprette oppgaven: målstien er {{length}} tegn lang og overskrider Windows-grensen på {{limit}}. Velg en kortere mappesti eller et kortere filnavn.",
       "createFailedWithReason": "Kunne ikke opprette nedlastingsoppgaven: {{reason}}",
       "mediaResolveFailed": "Programtillegget for nettstedsoppslag kunne ikke lese denne siden, så den ble ikke lastet ned. Prøv igjen senere, eller oppdater programtillegget.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Dette mediet krever innlogging. Logg inn i innstillingene for programtillegget for nettstedsoppslag, og prøv igjen.",
+          "paidContent": "Dette mediet krever medlemskap eller kjøp på nettstedet.",
+          "previewOnly": "Bare en forhåndsvisning av dette mediet er tilgjengelig.",
+          "protected": "Dette mediet er beskyttet med DRM eller kryptering og kan ikke lastes ned.",
+          "geoRestricted": "Dette mediet er ikke tilgjengelig i din region.",
+          "rateLimited": "Nettstedet begrenser forespørsler. Prøv igjen senere.",
+          "notFound": "Dette mediet er fjernet eller finnes ikke lenger.",
+          "liveUnsupported": "Direktesendinger kan ikke lastes ned.",
+          "unsupported": "Programtillegget for nettstedsoppslag melder at dette mediet ikke kan lastes ned.",
+          "unsupportedWithDetail": "Programtillegget for nettstedsoppslag melder at dette mediet ikke kan lastes ned: {{detail}}"
+        },
+        "failure": {
+          "timeout": "Programtillegget for nettstedsoppslag svarte ikke i tide. Prøv igjen senere.",
+          "noPlayableVariant": "Programtillegget for nettstedsoppslag fant ikke noe nedlastbart format for dette mediet.",
+          "streamUnavailable": "Mediestrømmen som programtillegget for nettstedsoppslag valgte, kunne ikke hentes. Prøv igjen senere."
+        }
+      },
       "created": "Oppgaven er lagt til",
       "createdCopy": "En separat kopi er lagt til",
       "createdPartial": "Lagt til: {{ok}} · Mislyktes: {{failed}}",

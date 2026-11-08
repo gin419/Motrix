@@ -2,7 +2,10 @@ import { MediaResolveError } from '@core/task/media-resolve-error'
 import { AppError, ErrorCode } from '@shared/errors'
 import { describe, expect, it, vi } from 'vitest'
 import { makeMediaResolveService } from './media-resolve-service'
-import { makeResolveToMux as makeAdapter } from './resolve-to-mux'
+import {
+  type ResolvedMediaVariant,
+  resolveMediaVariant,
+} from './resolve-media-variant'
 
 // Build a fake registry entry shaped like PluginRegistry.entries() rows:
 // { manifest, origin, enabled }. A site-resolver contributes to the mux seam
@@ -40,8 +43,38 @@ function plugin(spec: {
   }
 }
 
-function makeResolveToMux(registry: any, host: any) {
-  return makeAdapter(makeMediaResolveService({ registry, host }))
+// Mux selections are flattened to the pair shape the pre-variant seam
+// returned, so the routing cases below read as before; any other source
+// kind is returned as `{ kind, variantId }`.
+function toRoute(picked: ResolvedMediaVariant | null) {
+  if (!picked) return null
+  const { media, entry, variant } = picked
+  const source = variant.source
+  if (source?.kind !== 'mux')
+    return { kind: source?.kind, variantId: variant.id }
+  const title = media.resolution.title || entry.title
+  return {
+    videoUrl: source.video.url,
+    audioUrl: source.audio.url,
+    container: variant.container,
+    ...(source.video.headers ? { headers: source.video.headers } : {}),
+    ...(title ? { title } : {}),
+  }
+}
+
+function makeResolveToMux(
+  registry: any,
+  host: any,
+  isFfmpegAvailable: () => Promise<boolean> = async () => true
+) {
+  const service = makeMediaResolveService({ registry, host })
+  return async (url: string, cookieHeader?: string) =>
+    toRoute(
+      await resolveMediaVariant(service, url, {
+        ...(cookieHeader ? { cookieHeader } : {}),
+        isFfmpegAvailable,
+      })
+    )
 }
 
 function fakeRegistry(...plugins: ReturnType<typeof plugin>[]) {
@@ -51,7 +84,7 @@ function fakeRegistry(...plugins: ReturnType<typeof plugin>[]) {
 const PAGE = 'https://www.media.test/watch/abc123'
 const OTHER_PAGE = 'https://www.other-media.test/watch?v=xyz'
 
-describe('makeResolveToMux — generalized multi-resolver routing', () => {
+describe('resolveMediaVariant — multi-resolver routing', () => {
   it('routes to an enabled site-resolver that declares <id>.resolve and whose hostPermissions admit the url', async () => {
     const invokeCommand = vi.fn().mockResolvedValue({
       kind: 'mux',
@@ -465,7 +498,7 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
   })
 })
 
-describe('makeResolveToMux over versioned results', () => {
+describe('resolveMediaVariant over versioned results', () => {
   const site = plugin({
     id: 'example.media-resolver',
     hostPermissions: ['*://*.media.test/*'],
@@ -547,7 +580,9 @@ describe('makeResolveToMux over versioned results', () => {
       PAGE,
       'session=x'
     )
-    expect(result?.videoUrl).toBe('https://cdn.media.test/p1/v.m4s')
+    expect(result).toMatchObject({
+      videoUrl: 'https://cdn.media.test/p1/v.m4s',
+    })
     expect(host.invokeCommand).toHaveBeenCalledTimes(2)
     expect(host.invokeCommand.mock.calls[1]).toEqual([
       'example.media-resolver',
@@ -557,36 +592,77 @@ describe('makeResolveToMux over versioned results', () => {
     ])
   })
 
-  it('rejects a best variant that is not a mux pair as no-playable-variant', async () => {
-    const host = hostReturning({
-      kind: 'media',
-      schemaVersion: 1,
-      title: 'Collection',
-      entries: [
-        {
-          id: 'p1',
-          title: 'Part 1',
-          variants: [
-            {
-              id: 'hls',
-              label: 'HLS',
-              container: 'ts',
-              source: {
-                kind: 'hls',
-                manifest: { url: 'https://cdn.media.test/master.m3u8' },
-              },
-            },
-            { id: 'mux', label: 'Mux', container: 'mp4', source: mux('p1') },
-          ],
-        },
-      ],
+  const hlsVariant = {
+    id: 'hls',
+    label: 'HLS',
+    container: 'ts',
+    source: {
+      kind: 'hls',
+      manifest: { url: 'https://cdn.media.test/master.m3u8' },
+    },
+  }
+  const directVariant = {
+    id: 'sd',
+    label: '360P',
+    container: 'mp4',
+    source: {
+      kind: 'direct',
+      stream: { url: 'https://cdn.media.test/p1/360.mp4' },
+    },
+  }
+  const oneEntry = (...variants: unknown[]) => ({
+    kind: 'media',
+    schemaVersion: 1,
+    title: 'Collection',
+    entries: [{ id: 'p1', title: 'Part 1', variants }],
+  })
+
+  it('selects the best variant whatever its source kind', async () => {
+    const host = hostReturning(
+      oneEntry(hlsVariant, {
+        id: 'mux',
+        label: 'Mux',
+        container: 'mp4',
+        source: mux('p1'),
+      })
+    )
+    expect(await makeResolveToMux(fakeRegistry(site), host)(PAGE)).toEqual({
+      kind: 'hls',
+      variantId: 'hls',
     })
+  })
+
+  it('prefers a direct variant when FFmpeg is missing', async () => {
+    const host = hostReturning(oneEntry(hlsVariant, directVariant))
+    expect(
+      await makeResolveToMux(fakeRegistry(site), host, async () => false)(PAGE)
+    ).toEqual({ kind: 'direct', variantId: 'sd' })
+  })
+
+  it('fails with ffmpeg-required when only FFmpeg variants exist and FFmpeg is missing', async () => {
+    const host = hostReturning(
+      oneEntry(hlsVariant, {
+        id: 'mux',
+        label: 'Mux',
+        container: 'mp4',
+        source: mux('p1'),
+      })
+    )
     await expect(
-      makeResolveToMux(fakeRegistry(site), host)(PAGE)
+      makeResolveToMux(fakeRegistry(site), host, async () => false)(PAGE)
     ).rejects.toMatchObject({
       pluginId: 'example.media-resolver',
-      failure: 'no-playable-variant',
+      failure: 'ffmpeg-required',
     })
+  })
+
+  it('does not look for FFmpeg when no resolver claims the URL', async () => {
+    const isFfmpegAvailable = vi.fn(async () => true)
+    const host = hostReturning(null)
+    expect(
+      await makeResolveToMux(fakeRegistry(site), host, isFfmpegAvailable)(PAGE)
+    ).toBeNull()
+    expect(isFfmpegAvailable).not.toHaveBeenCalled()
   })
 
   it('turns an unavailable result into an unavailable failure with its reason', async () => {
@@ -595,6 +671,56 @@ describe('makeResolveToMux over versioned results', () => {
       makeResolveToMux(fakeRegistry(site), host)(PAGE)
     ).rejects.toMatchObject({ failure: 'unavailable', reason: 'paid-content' })
   })
+
+  it.each([
+    [
+      'the result',
+      [{ kind: 'unavailable', reason: 'age-gated', message: 'Confirm age' }],
+    ],
+    [
+      'the current entry',
+      [
+        {
+          kind: 'media',
+          schemaVersion: 1,
+          title: 'Collection',
+          entries: [
+            {
+              id: 'p1',
+              title: 'Part 1',
+              unavailable: { reason: 'age-gated', message: 'Confirm age' },
+            },
+          ],
+        },
+      ],
+    ],
+    [
+      'the deferred-entry follow-up',
+      [
+        {
+          kind: 'media',
+          schemaVersion: 1,
+          title: 'Collection',
+          entries: [{ id: 'p1', title: 'Part 1', current: true }],
+        },
+        { kind: 'unavailable', reason: 'age-gated', message: 'Confirm age' },
+      ],
+    ],
+  ])(
+    'carries the resolver message of an unavailable %s',
+    async (_where, results) => {
+      const host = hostReturning(...results)
+      await expect(
+        makeResolveToMux(fakeRegistry(site), host)(PAGE)
+      ).rejects.toMatchObject({
+        failure: 'unavailable',
+        reason: 'age-gated',
+        detail: 'Confirm age',
+        message:
+          'task.add.media.unavailable.unsupportedWithDetail: Confirm age',
+      })
+    }
+  )
 
   it('reports a host command timeout as a timeout failure', async () => {
     const timeout = Object.assign(new Error('timed out'), {

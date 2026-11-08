@@ -2854,6 +2854,25 @@
       "createFailedPathTooLong": "Impossible de créer la tâche : le chemin de destination contient {{length}} caractères et dépasse la limite Windows de {{limit}}. Choisissez un dossier de destination ou un nom de fichier plus court.",
       "createFailedWithReason": "Impossible de créer la tâche de téléchargement : {{reason}}",
       "mediaResolveFailed": "L’extension de résolution du site n’a pas pu lire cette page ; elle n’a donc pas été téléchargée. Réessayez plus tard ou mettez à jour l’extension.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Ce média nécessite une connexion. Connectez-vous dans les paramètres de l’extension de résolution du site, puis réessayez.",
+          "paidContent": "Ce média nécessite un abonnement ou un achat sur son site.",
+          "previewOnly": "Seul un aperçu de ce média est disponible.",
+          "protected": "Ce média est protégé par DRM ou chiffrement et ne peut pas être téléchargé.",
+          "geoRestricted": "Ce média n’est pas disponible dans votre région.",
+          "rateLimited": "Le site limite les requêtes. Réessayez plus tard.",
+          "notFound": "Ce média a été supprimé ou n’existe plus.",
+          "liveUnsupported": "Les diffusions en direct ne peuvent pas être téléchargées.",
+          "unsupported": "L’extension de résolution du site indique que ce média ne peut pas être téléchargé.",
+          "unsupportedWithDetail": "L’extension de résolution du site indique que ce média ne peut pas être téléchargé : {{detail}}"
+        },
+        "failure": {
+          "timeout": "L’extension de résolution du site n’a pas répondu à temps. Réessayez plus tard.",
+          "noPlayableVariant": "L’extension de résolution du site n’a trouvé aucun format téléchargeable pour ce média.",
+          "streamUnavailable": "Le flux choisi par l’extension de résolution du site n’a pas pu être récupéré. Réessayez plus tard."
+        }
+      },
       "created": "Tâche ajoutée",
       "createdCopy": "Copie distincte ajoutée",
       "createdPartial": "Ajouts : {{ok}} · Échecs : {{failed}}",

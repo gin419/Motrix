@@ -1044,6 +1044,25 @@
       "createFailed": "Die Download-Aufgabe konnte nicht erstellt werden.",
       "createFailedWithReason": "Die Download-Aufgabe konnte nicht erstellt werden: {{reason}}",
       "mediaResolveFailed": "Das Website-Resolver-Plugin konnte diese Seite nicht auslesen, daher wurde sie nicht heruntergeladen. Versuchen Sie es später erneut oder aktualisieren Sie das Plugin.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Für dieses Medium ist eine Anmeldung erforderlich. Melden Sie sich in den Einstellungen des Website-Resolver-Plugins an und versuchen Sie es erneut.",
+          "paidContent": "Für dieses Medium ist auf der Website eine Mitgliedschaft oder ein Kauf erforderlich.",
+          "previewOnly": "Von diesem Medium ist nur eine Vorschau verfügbar.",
+          "protected": "Dieses Medium ist durch DRM oder Verschlüsselung geschützt und kann nicht heruntergeladen werden.",
+          "geoRestricted": "Dieses Medium ist in Ihrer Region nicht verfügbar.",
+          "rateLimited": "Die Website begrenzt Anfragen. Versuchen Sie es später erneut.",
+          "notFound": "Dieses Medium wurde entfernt oder existiert nicht mehr.",
+          "liveUnsupported": "Livestreams können nicht heruntergeladen werden.",
+          "unsupported": "Laut Website-Resolver-Plugin kann dieses Medium nicht heruntergeladen werden.",
+          "unsupportedWithDetail": "Laut Website-Resolver-Plugin kann dieses Medium nicht heruntergeladen werden: {{detail}}"
+        },
+        "failure": {
+          "timeout": "Das Website-Resolver-Plugin hat nicht rechtzeitig geantwortet. Versuchen Sie es später erneut.",
+          "noPlayableVariant": "Das Website-Resolver-Plugin hat für dieses Medium kein herunterladbares Format gefunden.",
+          "streamUnavailable": "Der vom Website-Resolver-Plugin gewählte Medienstream konnte nicht abgerufen werden. Versuchen Sie es später erneut."
+        }
+      },
       "createFailedByPlugin": "Die Aufgabe konnte nicht erstellt werden: Das Plugin „{{pluginId}}“ hat sie gestoppt ({{detail}}). Deaktivieren Sie dieses Plugin unter Einstellungen → Plugins und versuchen Sie es erneut.",
       "createFailedPathTooLong": "Die Aufgabe konnte nicht erstellt werden: Der Zielpfad ist {{length}} Zeichen lang und überschreitet das Windows-Limit von {{limit}}. Wählen Sie einen kürzeren Speicherpfad oder Dateinamen.",
       "parseFailed": "Die Torrent-Datei konnte nicht eingelesen werden.",

@@ -420,6 +420,35 @@ describe('AddTaskForm', () => {
     expect(localStorage.getItem('motrix.pending-create-inputs.v1')).toBeNull()
   })
 
+  it('shows the resolver message of an unrecognized unavailability reason', async () => {
+    invokeMock.mockImplementation(async (channel) => {
+      if (channel !== Commands.CreateTask) return {}
+      throw new Error(
+        "Error invoking remote method 'command:executeRendererSubmission': Error: task.add.media.unavailable.unsupportedWithDetail: Confirm your age in the plugin settings"
+      )
+    })
+    renderForm({
+      defaultValues: {
+        tab: 'links',
+        urls: 'https://video.example/watch/1',
+        saveDir: '/d',
+      },
+    })
+    await userEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'this media can’t be downloaded: Confirm your age in the plugin settings'
+      )
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent('unconfirmed')
+    expect(mockServices.notify).toHaveBeenCalledWith(
+      'error',
+      'task.add.media.unavailable.unsupportedWithDetail',
+      { detail: 'Confirm your age in the plugin settings' }
+    )
+    expect(localStorage.getItem('motrix.pending-create-inputs.v1')).toBeNull()
+  })
+
   it('renders links tab by default', () => {
     renderForm()
     expect(screen.getByRole('textbox')).toBeInTheDocument()

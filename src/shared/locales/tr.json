@@ -1044,6 +1044,25 @@
       "createFailed": "İndirme görevi oluşturulamadı.",
       "createFailedWithReason": "İndirme görevi oluşturulamadı: {{reason}}",
       "mediaResolveFailed": "Site çözümleyici eklentisi bu sayfayı okuyamadı, bu nedenle sayfa indirilmedi. Daha sonra tekrar deneyin veya eklentiyi güncelleyin.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Bu medya için oturum açmanız gerekiyor. Site çözümleyici eklentisinin ayarlarından oturum açın ve tekrar deneyin.",
+          "paidContent": "Bu medya, sitesinde üyelik veya satın alma gerektiriyor.",
+          "previewOnly": "Bu medyanın yalnızca önizlemesi mevcut.",
+          "protected": "Bu medya DRM veya şifreleme ile korunuyor ve indirilemez.",
+          "geoRestricted": "Bu medya bölgenizde kullanılamıyor.",
+          "rateLimited": "Site istekleri sınırlıyor. Daha sonra tekrar deneyin.",
+          "notFound": "Bu medya kaldırılmış veya artık mevcut değil.",
+          "liveUnsupported": "Canlı yayınlar indirilemez.",
+          "unsupported": "Site çözümleyici eklentisi bu medyanın indirilemeyeceğini bildiriyor.",
+          "unsupportedWithDetail": "Site çözümleyici eklentisi bu medyanın indirilemeyeceğini bildiriyor: {{detail}}"
+        },
+        "failure": {
+          "timeout": "Site çözümleyici eklentisi zamanında yanıt vermedi. Daha sonra tekrar deneyin.",
+          "noPlayableVariant": "Site çözümleyici eklentisi bu medya için indirilebilir bir biçim bulamadı.",
+          "streamUnavailable": "Site çözümleyici eklentisinin seçtiği medya akışı alınamadı. Daha sonra tekrar deneyin."
+        }
+      },
       "createFailedByPlugin": "Görev oluşturulamadı: “{{pluginId}}” eklentisi işlemi durdurdu ({{detail}}). Ayarlar → Eklentiler bölümünden bu eklentiyi devre dışı bırakıp tekrar deneyin.",
       "createFailedPathTooLong": "Görev oluşturulamadı: hedef yol {{length}} karakter uzunluğunda ve Windows’un {{limit}} karakter sınırını aşıyor. Daha kısa bir kayıt klasörü yolu veya dosya adı seçin.",
       "parseFailed": "Torrent dosyası ayrıştırılamadı.",

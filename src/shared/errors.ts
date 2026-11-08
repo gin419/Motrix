@@ -91,10 +91,121 @@ export enum ErrorCode {
 
 /**
  * i18n key carried as the message of an `ErrorCode.MediaResolveFailed`
- * AppError. Electron flattens an AppError to its message across IPC, so the
- * renderer receives this key verbatim and translates it.
+ * AppError when the resolver itself failed. Electron flattens an AppError to
+ * its message across IPC, so the renderer receives the key verbatim and
+ * translates it; {@link mediaResolveMessageKey} picks the key per failure.
  */
 export const MEDIA_RESOLVE_FAILED_KEY = 'task.add.mediaResolveFailed'
+
+/**
+ * Reasons a site resolver may give for unavailable media, each mapped to the
+ * `task.add.media.unavailable.*` leaf that explains it. Any other reason
+ * token is shown with the `unsupported` text.
+ */
+const MEDIA_UNAVAILABLE_TEXT = {
+  'login-required': 'loginRequired',
+  'premium-required': 'paidContent',
+  'paid-content': 'paidContent',
+  'preview-only': 'previewOnly',
+  drm: 'protected',
+  encrypted: 'protected',
+  'geo-restricted': 'geoRestricted',
+  'rate-limited': 'rateLimited',
+  'not-found': 'notFound',
+  removed: 'notFound',
+  'live-unsupported': 'liveUnsupported',
+  unsupported: 'unsupported',
+} as const
+
+export type MediaUnavailableReason = keyof typeof MEDIA_UNAVAILABLE_TEXT
+
+export const MEDIA_UNAVAILABLE_REASONS = Object.keys(
+  MEDIA_UNAVAILABLE_TEXT
+) as MediaUnavailableReason[]
+
+const MEDIA_FAILURE_KEYS: Readonly<Record<string, string>> = {
+  timeout: 'task.add.media.failure.timeout',
+  'no-playable-variant': 'task.add.media.failure.noPlayableVariant',
+  'stream-unavailable': 'task.add.media.failure.streamUnavailable',
+  'ffmpeg-required': 'settings.integration.media.ffmpegRequired',
+}
+
+/** The i18n key that explains a media resolve failure (and its reason). */
+export function mediaResolveMessageKey(
+  failure: string,
+  reason?: string
+): string {
+  if (failure === 'unavailable') {
+    // The reason is untrusted plugin output: an inherited member such as
+    // `constructor` must not pass for a known reason.
+    const leaf =
+      reason !== undefined && Object.hasOwn(MEDIA_UNAVAILABLE_TEXT, reason)
+        ? MEDIA_UNAVAILABLE_TEXT[reason as MediaUnavailableReason]
+        : 'unsupported'
+    return `task.add.media.unavailable.${leaf}`
+  }
+  return MEDIA_FAILURE_KEYS[failure] ?? MEDIA_RESOLVE_FAILED_KEY
+}
+
+/** Every key {@link mediaResolveMessageKey} can return. */
+export const MEDIA_RESOLVE_MESSAGE_KEYS: ReadonlySet<string> = new Set([
+  MEDIA_RESOLVE_FAILED_KEY,
+  ...Object.values(MEDIA_FAILURE_KEYS),
+  ...Object.values(MEDIA_UNAVAILABLE_TEXT).map(
+    (leaf) => `task.add.media.unavailable.${leaf}`
+  ),
+])
+
+const MEDIA_UNAVAILABLE_GENERIC_KEY = 'task.add.media.unavailable.unsupported'
+
+/**
+ * The generic unavailability text followed by the resolver's own message,
+ * interpolated as `{{detail}}`.
+ */
+export const MEDIA_UNAVAILABLE_DETAIL_KEY =
+  'task.add.media.unavailable.unsupportedWithDetail'
+
+const MEDIA_DETAIL_SEPARATOR = ': '
+
+/**
+ * The message of a media resolve failure. A reason the host has no text
+ * for shows the generic text plus the resolver's sanitized plain-text
+ * message, carried after the detail key as `<key>: <detail>`; keys contain
+ * no spaces, so the first separator ends the key.
+ */
+export function mediaResolveMessage(
+  failure: string,
+  reason?: string,
+  detail?: string
+): string {
+  const key = mediaResolveMessageKey(failure, reason)
+  const text = detail?.trim()
+  return text && key === MEDIA_UNAVAILABLE_GENERIC_KEY
+    ? `${MEDIA_UNAVAILABLE_DETAIL_KEY}${MEDIA_DETAIL_SEPARATOR}${text}`
+    : key
+}
+
+export interface MediaResolveMessage {
+  key: string
+  /** The resolver's own message, for the key's `{{detail}}`. */
+  detail?: string
+}
+
+/**
+ * Split a message {@link mediaResolveMessage} produced into its i18n key and
+ * detail, or null when the message is not a media resolve failure.
+ */
+export function parseMediaResolveMessage(
+  message: string
+): MediaResolveMessage | null {
+  if (MEDIA_RESOLVE_MESSAGE_KEYS.has(message)) return { key: message }
+  const prefix = `${MEDIA_UNAVAILABLE_DETAIL_KEY}${MEDIA_DETAIL_SEPARATOR}`
+  if (!message.startsWith(prefix)) return null
+  const detail = message.slice(prefix.length).trim()
+  return detail
+    ? { key: MEDIA_UNAVAILABLE_DETAIL_KEY, detail }
+    : { key: MEDIA_UNAVAILABLE_GENERIC_KEY }
+}
 
 export enum DownloadErrorCode {
   Unknown = 'DL_UNKNOWN',

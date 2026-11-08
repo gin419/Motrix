@@ -1044,6 +1044,25 @@
       "createFailed": "A letöltési feladat létrehozása sikertelen.",
       "createFailedWithReason": "A letöltési feladat létrehozása sikertelen: {{reason}}",
       "mediaResolveFailed": "A webhelyfeloldó bővítmény nem tudta beolvasni ezt az oldalt, ezért nem lett letöltve. Próbáld újra később, vagy frissítsd a bővítményt.",
+      "media": {
+        "unavailable": {
+          "loginRequired": "Ehhez a tartalomhoz bejelentkezés szükséges. Jelentkezz be a webhelyfeloldó bővítmény beállításaiban, majd próbáld újra.",
+          "paidContent": "Ehhez a tartalomhoz előfizetés vagy vásárlás szükséges a webhelyen.",
+          "previewOnly": "Ebből a tartalomból csak előnézet érhető el.",
+          "protected": "Ezt a tartalmat DRM vagy titkosítás védi, ezért nem tölthető le.",
+          "geoRestricted": "Ez a tartalom nem érhető el a régiódban.",
+          "rateLimited": "A webhely korlátozza a kéréseket. Próbáld újra később.",
+          "notFound": "Ezt a tartalmat eltávolították, vagy már nem létezik.",
+          "liveUnsupported": "Élő közvetítések nem tölthetők le.",
+          "unsupported": "A webhelyfeloldó bővítmény szerint ez a tartalom nem tölthető le.",
+          "unsupportedWithDetail": "A webhelyfeloldó bővítmény szerint ez a tartalom nem tölthető le: {{detail}}"
+        },
+        "failure": {
+          "timeout": "A webhelyfeloldó bővítmény nem válaszolt időben. Próbáld újra később.",
+          "noPlayableVariant": "A webhelyfeloldó bővítmény nem talált letölthető formátumot ehhez a tartalomhoz.",
+          "streamUnavailable": "A webhelyfeloldó bővítmény által választott médiafolyam nem kérhető le. Próbáld újra később."
+        }
+      },
       "createFailedByPlugin": "Nem sikerült létrehozni a feladatot: a(z) „{{pluginId}}” bővítmény leállította ({{detail}}). Tiltsd le ezt a bővítményt a Beállítások → Bővítmények alatt, majd próbáld újra.",
       "createFailedPathTooLong": "Nem sikerült létrehozni a feladatot: a cél elérési útja {{length}} karakter hosszú, ami meghaladja a Windows {{limit}} karakteres korlátját. Válassz rövidebb mentési útvonalat vagy fájlnevet.",
       "parseFailed": "A torrentfájl feldolgozása sikertelen.",

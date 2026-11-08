@@ -50,6 +50,7 @@ import {
 } from '@core/legacy-import/legacy-task-policy'
 import { newTaskId } from '@core/lib/ids'
 import { getLogger, initLogger } from '@core/logger'
+import { makeMediaResolveService } from '@core/media-resolve/media-resolve-service'
 import { registerEngineCompatibilitySubscriber } from '@core/notifications/engine-compatibility-subscriber'
 import { registerEngineFailureSubscriber } from '@core/notifications/engine-failure-subscriber'
 import { NotificationCenter } from '@core/notifications/notification-center'
@@ -171,6 +172,7 @@ import {
 import { createApp } from './http/app'
 import { buildServerCommandHandlers } from './ipc/commands'
 import { buildServerQueryHandlers } from './ipc/queries'
+import { translateMediaResolveText } from './media-resolve-text'
 import { createServerMediaRuntime } from './media-runtime'
 import { provisionOperatorToken } from './operator-token'
 import { FnosAccountAuthority } from './platform/fnos/accounts'
@@ -738,6 +740,15 @@ async function main() {
     ),
   })
   shutdownActions.drainPluginHost = () => pluginHost.shutdown()
+  // Process-scoped site resolution over the live registry and host, shared by
+  // Web UI creates, MDXP download/add and extension submits — the same
+  // service the Electron shell builds next to its plugin host.
+  const mediaResolve = makeMediaResolveService({
+    registry: pluginRegistry,
+    host: pluginHost,
+    pluginLog: (pluginId) => pluginCapHost.createLog(pluginId),
+    log: getLogger('media-resolve'),
+  })
   pluginGrants.bindPolicyBarrier(
     pluginHost.applyPolicyMutation.bind(pluginHost)
   )
@@ -1428,6 +1439,8 @@ async function main() {
     bridgeControl: bridgeManager,
     getMediaSegmentGids: (taskId) => media.getActiveSegmentGids(taskId),
     cancelMedia: (taskId) => media.cancel(taskId),
+    mediaResolve,
+    media,
     aria2BinaryPath: platform.aria2BinaryPath,
     finalNamePicker,
     torrentMetaStore,
@@ -2236,6 +2249,10 @@ async function main() {
             ...taskActionDeps,
             torrentMetaStore,
           }),
+        // MDXP download/add resolves pages like a Web UI create; extension
+        // submits are resolved by the receiver and skip this seam.
+        mediaResolve,
+        media,
       }
       const taskActionDeps = {
         authorizeTaskWrite: nasTaskAccess?.authorizeWrite,
@@ -2367,6 +2384,10 @@ async function main() {
             eventBus,
             bridgeBus,
             localize: (code) => code,
+            // Site resolution failures reach the extension as readable
+            // English, where the desktop shell uses the host language.
+            translate: translateMediaResolveText,
+            mediaResolve,
             waitForReady: () =>
               supervisor.waitUntilReady(ENGINE_READY_TIMEOUT_MS),
           }),

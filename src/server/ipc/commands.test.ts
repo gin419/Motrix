@@ -36,6 +36,11 @@ import {
   TransitionPhase,
 } from '@shared/types/task'
 import { makeMediaMetaStoreStub } from '@test-utils/media-meta-store'
+import {
+  fakeMediaResolve,
+  fakeMediaTarget,
+  pastedMediaPage,
+} from '@test-utils/media-resolve'
 import { makeDownloadTask } from '@test-utils/task'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServerDownloadPathPolicy } from '../download-path-policy'
@@ -125,6 +130,9 @@ function makeFakeCtx() {
       restart: vi.fn().mockResolvedValue(undefined),
     },
     aria2BinaryPath: '/usr/bin/aria2c',
+    // No resolver claims anything unless a test installs one.
+    mediaResolve: fakeMediaResolve(null),
+    media: fakeMediaTarget(),
     finalNamePicker: {} as FinalNamePicker,
     mediaMetaStore: makeMediaMetaStoreStub(),
     torrentMetaStore: {} as TorrentMetaStore,
@@ -1451,6 +1459,46 @@ describe('server Commands.CreateTask magnet metadata selection', () => {
       ['metadata-task'],
       expect.any(Function)
     )
+  })
+})
+
+describe('server paste media resolution', () => {
+  it('resolves a Web UI paste into the process mux pipeline without the bridge', async () => {
+    const fixture = pastedMediaPage()
+    const saveDir = await mkdtemp(path.join(os.tmpdir(), 'motrix-paste-'))
+    try {
+      const ctx = {
+        ...makeFakeCtx(),
+        bridgeControl: undefined,
+        mediaResolve: fixture.mediaResolve,
+        media: fixture.media,
+        taskManager: new TaskManager(),
+        finalNamePicker: {
+          pick: vi.fn(async (_dir: string, name: string) => name),
+        } as unknown as FinalNamePicker,
+      }
+      const handlers = buildServerCommandHandlers(
+        ctx as unknown as ServerCommandContext
+      )
+
+      await handlers[Commands.CreateTask]?.({
+        type: 'http',
+        uris: [fixture.page],
+        saveDir,
+        headers: [],
+      })
+
+      // The Web path has no browser cookies to give the resolver.
+      expect(fixture.mediaResolve.resolve).toHaveBeenCalledExactlyOnceWith(
+        fixture.page,
+        {}
+      )
+      expect(fixture.media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ ...fixture.expectedDispatch, saveDir })
+      )
+    } finally {
+      await rm(saveDir, { recursive: true, force: true })
+    }
   })
 })
 

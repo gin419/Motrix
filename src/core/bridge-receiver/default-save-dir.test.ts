@@ -17,6 +17,11 @@ import {
   makeExtensionContext,
   makeTestMediaRuntime,
 } from '@test-utils/bridge-receiver'
+import {
+  fakeMediaResolve,
+  mediaResolution,
+  muxVariant,
+} from '@test-utils/media-resolve'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BridgeReceiver } from './bridge-receiver'
 
@@ -259,16 +264,14 @@ describe('bridge default save directory', () => {
     const deps = makeBridgeReceiverDeps({
       getDefaultSaveDir: () => settings.getApp().defaultSaveDir,
       media: makeTestMediaRuntime(),
-      resolveToMux: async () => {
+      mediaResolve: fakeMediaResolve(async () => {
         resolveStarted.resolve()
         await releaseResolve.promise
-        return {
-          title: 'Resolved title',
-          videoUrl: 'https://example.com/video',
-          audioUrl: 'https://example.com/audio',
-          container: 'mp4',
-        }
-      },
+        return mediaResolution(
+          'Resolved title',
+          muxVariant('https://example.com/video', 'https://example.com/audio')
+        )
+      }),
     })
     const pickName = vi.spyOn(deps, 'pickName')
     const receiver = new BridgeReceiver(deps)

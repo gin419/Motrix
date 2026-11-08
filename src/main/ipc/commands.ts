@@ -1,7 +1,5 @@
 import { realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { BridgeReceiverError } from '@core/bridge-receiver/errors'
-import type { AdaptedMux } from '@core/bridge-receiver/submit-download-adapter'
 import type { DnsFallbackConsumer } from '@core/engine/aria2/dns-fallback'
 import { dnsModeToAsyncDns } from '@core/engine/aria2/dns-fallback'
 import type { EngineAdapter } from '@core/engine/engine-adapter'
@@ -13,7 +11,6 @@ import { createUpdateGeoIPDatabaseHandler } from '@core/geoip/update-geo-ip-data
 import { getLogger } from '@core/logger'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
 import type { MediaRuntime } from '@core/media-resolve/media-runtime'
-import { makeResolveToMux } from '@core/media-resolve/resolve-to-mux'
 import { publishEngineRestartRequired } from '@core/notifications/engine-restart-required'
 import type { NotificationCenter } from '@core/notifications/notification-center'
 import type { CapabilityHost } from '@core/plugin/capabilities/interface'
@@ -377,7 +374,6 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     publishTaskUpdateNow,
   } = ctx
 
-  const resolveToMux = makeResolveToMux(mediaResolve)
   const createDeps: CreateTaskDeps = {
     adapter,
     directResourceValidator: new DirectResourceValidatorService(),
@@ -411,33 +407,14 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
       await waitForTasksReady?.()
     },
     assertEngineReady: () => supervisor.assertReady(),
-    // Desktop paste resolution still runs only while the bridge is running:
-    // with the bridge disabled or not yet started, resolveToMux returns null
-    // → HTTP fallback, as before. dispatchMux is only called when
-    // resolveToMux returns non-null (the seam gates on both). A matching
-    // resolver that fails throws MediaResolveError instead, which surfaces as
-    // a task-creation error rather than downloading the page. The desktop
-    // path passes no cookie header (2nd arg omitted); only the extension
-    // submit path carries browser cookies.
-    resolveToMux: (url: string) =>
-      bridgeManager.current ? resolveToMux(url) : Promise.resolve(null),
-    // Same process-scoped pipeline and live FFmpeg check as the receiver.
-    dispatchMux: async (adapted: AdaptedMux) => {
-      try {
-        return await media.mux.dispatch(adapted)
-      } catch (error) {
-        if (
-          error instanceof BridgeReceiverError &&
-          error.code === 'unsupported-kind'
-        ) {
-          throw new AppError(
-            ErrorCode.EngineFeatureUnavailable,
-            i18n.t('settings.integration.media.ffmpegRequired')
-          )
-        }
-        throw error
-      }
-    },
+    // Paste resolution runs at process scope whether or not the browser
+    // bridge is enabled: installed site resolvers resolve pasted pages by
+    // default. A matching resolver that fails throws MediaResolveError,
+    // which surfaces as a task-creation error rather than downloading the
+    // page. The desktop path passes no cookies.
+    mediaResolve,
+    // Same process-scoped pipelines and live FFmpeg check as the receiver.
+    media,
   }
 
   // A media task (Mux/Hls) has engineTaskId '' and no aria2 handle, so pause/

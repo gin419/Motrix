@@ -47,7 +47,7 @@ export class DirectPipeline {
       // `payload` for http tasks (that key is bt-only). Burying it under
       // payload.uris made handleCreateTask's schema reject every direct
       // submit ("uris: expected array, received undefined").
-      uris: [adapted.primaryUrl],
+      uris: [adapted.primaryUrl, ...(adapted.mirrorUrls ?? [])],
       saveDir: adapted.saveDir,
       ...(adapted.discoverFilename ? {} : { filename: adapted.finalName }),
       // Match manual tasks by leaving the per-task override unset. Aria2 then
@@ -59,6 +59,9 @@ export class DirectPipeline {
       .createTask(req, undefined, {
         source: 'bridge',
         sourceMeta: adapted.sourceMeta,
+        // The receiver owns site resolution for extension submits, with the
+        // browser's cookies; the create must not resolve the URL again.
+        skipMediaResolve: true,
         // Even [] requests an isolated task cookie jar in the engine.
         cookies: adapted.cookies,
       })

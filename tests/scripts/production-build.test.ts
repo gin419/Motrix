@@ -6,8 +6,11 @@ const MIB = 1024 * 1024
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const TARGETS = [
   // Keep the 2 MiB startup ceiling and bound the complete lazy-loaded output.
-  // The versioned site-resolution contract and resolve service add ~8 KiB.
-  { name: 'main', initial: 2 * MIB, total: 5.5 * MIB + 20 * 1024 },
+  // The versioned site-resolution contract and resolve service add ~8 KiB;
+  // routing resolved variants to direct, HLS and DASH adds ~2 KiB. Main
+  // bundles every catalog, so the 13 site-resolution messages in all 26
+  // locales add ~36 KiB.
+  { name: 'main', initial: 2 * MIB, total: 5.5 * MIB + 64 * 1024 },
   { name: 'preload', initial: 80 * 1024, total: 80 * 1024 },
   { name: 'worker', initial: 48 * 1024, total: 48 * 1024 },
   // Native NAS strings in all 26 catalogs add ~60 KiB; the Web-only settings

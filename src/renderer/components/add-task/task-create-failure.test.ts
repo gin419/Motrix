@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  definiteRejectionMessage,
   definiteTaskCreateRejection,
   parsePathTooLong,
   parsePluginChainAbort,
@@ -34,6 +35,46 @@ describe('definiteTaskCreateRejection', () => {
         new Error('rpc failed 500: {"error":"task.add.mediaResolveFailed"}')
       )
     ).toBe('task.add.mediaResolveFailed')
+  })
+
+  it.each([
+    'task.add.media.unavailable.loginRequired',
+    'task.add.media.failure.timeout',
+    'settings.integration.media.ffmpegRequired',
+  ])('recognizes the reasoned media rejection %s', (key) => {
+    expect(
+      definiteTaskCreateRejection(
+        new Error(
+          `Error invoking remote method 'command:createTask': Error: ${key}`
+        )
+      )
+    ).toBe(key)
+    expect(
+      definiteTaskCreateRejection(
+        new Error(`rpc failed 500: {"error":"${key}"}`)
+      )
+    ).toBe(key)
+  })
+
+  it('recognizes a rejection that carries the resolver message', () => {
+    const message =
+      'task.add.media.unavailable.unsupportedWithDetail: Confirm your age: then retry'
+    for (const error of [
+      new Error(
+        `Error invoking remote method 'command:createTask': Error: ${message}`
+      ),
+      new Error(`rpc failed 500: ${JSON.stringify({ error: message })}`),
+    ]) {
+      const rejection = definiteTaskCreateRejection(error)
+      expect(rejection).toBe(message)
+      expect(definiteRejectionMessage(rejection ?? '')).toEqual({
+        key: 'task.add.media.unavailable.unsupportedWithDetail',
+        values: { detail: 'Confirm your age: then retry' },
+      })
+    }
+    expect(
+      definiteRejectionMessage('task.add.media.unavailable.loginRequired')
+    ).toEqual({ key: 'task.add.media.unavailable.loginRequired' })
   })
 
   it('leaves lost replies and other failures unconfirmed', () => {

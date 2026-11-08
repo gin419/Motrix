@@ -1032,6 +1032,25 @@
       "createFailed": "创建下载任务失败。",
       "createFailedWithReason": "创建下载任务失败：{{reason}}",
       "mediaResolveFailed": "站点解析插件无法读取此页面，因此未下载。请稍后重试或更新插件。",
+      "media": {
+        "unavailable": {
+          "loginRequired": "此媒体需要登录。请在站点解析插件的设置中登录后重试。",
+          "paidContent": "此媒体需要在其网站上开通会员或购买。",
+          "previewOnly": "此媒体仅提供预览。",
+          "protected": "此媒体受 DRM 或加密保护，无法下载。",
+          "geoRestricted": "此媒体在当前地区不可用。",
+          "rateLimited": "该网站正在限制请求。请稍后重试。",
+          "notFound": "此媒体已被删除或不存在。",
+          "liveUnsupported": "无法下载直播。",
+          "unsupported": "站点解析插件报告此媒体无法下载。",
+          "unsupportedWithDetail": "站点解析插件报告此媒体无法下载：{{detail}}"
+        },
+        "failure": {
+          "timeout": "站点解析插件未能及时响应。请稍后重试。",
+          "noPlayableVariant": "站点解析插件未找到此媒体可下载的格式。",
+          "streamUnavailable": "无法获取站点解析插件选定的媒体流。请稍后重试。"
+        }
+      },
       "createFailedByPlugin": "创建任务失败：插件「{{pluginId}}」中断了任务创建（{{detail}}）。可在「设置 → 插件」中停用该插件后重试。",
       "createFailedPathTooLong": "创建任务失败：目标路径长 {{length}} 个字符，超出 Windows 上限 {{limit}}。请改用更短的保存目录或文件名。",
       "parseFailed": "解析种子文件失败。",
