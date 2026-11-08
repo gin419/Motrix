@@ -245,6 +245,8 @@ export interface CreateTaskOptions {
 
 type AdmittedCreateOptions = CreateTaskOptions & {
   receipt?: CreateRequestReceipt
+  /** The site resolver's pick for the request URL, resolved before admission. */
+  resolvedMedia?: ResolvedMediaVariant
 }
 
 /**
@@ -328,6 +330,16 @@ async function createAdmittedTask(
     const preparedDir = deps.prepareSaveDir
       ? await deps.prepareSaveDir(requestedDir)
       : requestedDir
+    // Site resolution can take a resolver's whole budget. It needs only the
+    // request URL, so it runs before the output admission and the applied
+    // proxy lease: a slow resolver must not hold up other creates into the
+    // same folder, or a proxy change.
+    const resolvedMedia = await resolveRequestMedia(
+      parsed.data.uris,
+      deps,
+      opts
+    )
+    if (resolvedMedia) opts = { ...opts, resolvedMedia }
     return withBtOutputAdmission(preparedDir, () =>
       policy
         ? policy.runWithSnapshot((snapshot, lease) =>
@@ -764,82 +776,74 @@ async function handleCreateTaskUnderAdmission(
     }
 
     // 3.4. Site resolution seam (desktop and Web Add-Task, MDXP download/add).
-    // Runs BEFORE beforeCreate, reusing the computed taskId/saveDir. A
-    // pipeline variant (mux/HLS/DASH) hands the task to the media runtime and
-    // returns; a direct variant rewrites the request and falls through. No
-    // try/catch around the resolve: a claimed URL whose resolver fails
-    // throws MediaResolveError, and falling through would download the page
-    // HTML under the video's name.
+    // The variant was picked before admission (see resolveRequestMedia).
+    // Routing runs BEFORE beforeCreate, reusing the computed taskId/saveDir:
+    // a pipeline variant (mux/HLS/DASH) hands the task to the media runtime
+    // and returns; a direct variant rewrites the request and falls through.
     let mediaNamePlanned = false
     let mediaRewritten = false
-    const pageUri = params.uris[0]
-    if (deps.mediaResolve && pageUri && !opts.skipMediaResolve) {
-      const picked = await resolveMediaVariant(deps.mediaResolve, pageUri, {
-        isFfmpegAvailable: async () =>
-          (await deps.media?.isFfmpegAvailable()) ?? false,
-      })
-      if (picked) {
-        const { media, entry, variant } = picked
-        const planned = planMediaName(media, entry, variant)
-        const isDirect = variant.source?.kind === 'direct'
-        logMediaSelection(taskId, picked)
-        // Dedup runs on the on-disk name, extension included. A direct
-        // variant is re-picked below through the HTTP name path.
-        const mediaFinalName =
-          planned && !isDirect ? await pickHttpFinalName(planned) : finalName
-        // The destination check above ran on the page's name.
-        if (!isDirect) {
-          const tooLong = pathTooLongError(
-            [path.join(effectiveSaveDir, mediaFinalName)],
-            process.platform
-          )
-          if (tooLong) throw tooLong
-        }
-        const outcome = await dispatchMediaVariant(
-          variant,
-          {
-            taskId,
-            saveDir: effectiveSaveDir,
-            finalName: mediaFinalName,
-            sourceMeta: opts.sourceMeta ?? null,
-            ...(opts.receipt ? { receipt: opts.receipt } : {}),
-            ...(entry.durationSec !== undefined
-              ? { durationSec: entry.durationSec }
-              : {}),
-          },
-          deps.media
-        ).catch((error: unknown) => {
-          throw mediaDispatchFailure(media.pluginId, error)
-        })
-        if (outcome.kind === 'dispatched') {
-          return {
-            outcome: 'created',
-            gid: outcome.taskId,
-            taskId: outcome.taskId,
-          }
-        }
-        mediaRewritten = true
-        params.uris = outcome.uris
-        // The request's headers were meant for the page, not for whatever
-        // stream host the resolver picked: only the contract's allowlisted
-        // headers carry over, so a Cookie or Authorization typed for the
-        // page never reaches a CDN or its mirrors.
-        params.cookies = undefined
-        const { userAgent, headers } = mergeStreamHeaders(
-          outcome.headers,
-          params.headers
+    const picked = opts.resolvedMedia
+    if (picked) {
+      const { media, entry, variant } = picked
+      const planned = planMediaName(media, entry, variant)
+      const isDirect = variant.source?.kind === 'direct'
+      logMediaSelection(taskId, picked)
+      // Dedup runs on the on-disk name, extension included. A direct
+      // variant is re-picked below through the HTTP name path.
+      const mediaFinalName =
+        planned && !isDirect ? await pickHttpFinalName(planned) : finalName
+      // The destination check above ran on the page's name.
+      if (!isDirect) {
+        const tooLong = pathTooLongError(
+          [path.join(effectiveSaveDir, mediaFinalName)],
+          process.platform
         )
-        params.headers = headers
-        if (userAgent !== undefined) params.userAgent = userAgent
-        if (planned && !req.filename?.trim()) {
-          await pickHttpName(planned)
-          mediaNamePlanned = true
-          const tooLong = pathTooLongError(
-            [diskPath, finalPath],
-            process.platform
-          )
-          if (tooLong) throw tooLong
+        if (tooLong) throw tooLong
+      }
+      const outcome = await dispatchMediaVariant(
+        variant,
+        {
+          taskId,
+          saveDir: effectiveSaveDir,
+          finalName: mediaFinalName,
+          sourceMeta: opts.sourceMeta ?? null,
+          ...(opts.receipt ? { receipt: opts.receipt } : {}),
+          ...(entry.durationSec !== undefined
+            ? { durationSec: entry.durationSec }
+            : {}),
+        },
+        deps.media
+      ).catch((error: unknown) => {
+        throw mediaDispatchFailure(media.pluginId, error)
+      })
+      if (outcome.kind === 'dispatched') {
+        return {
+          outcome: 'created',
+          gid: outcome.taskId,
+          taskId: outcome.taskId,
         }
+      }
+      mediaRewritten = true
+      params.uris = outcome.uris
+      // The request's headers were meant for the page, not for whatever
+      // stream host the resolver picked: only the contract's allowlisted
+      // headers carry over, so a Cookie or Authorization typed for the
+      // page never reaches a CDN or its mirrors.
+      params.cookies = undefined
+      const { userAgent, headers } = mergeStreamHeaders(
+        outcome.headers,
+        params.headers
+      )
+      params.headers = headers
+      if (userAgent !== undefined) params.userAgent = userAgent
+      if (planned && !req.filename?.trim()) {
+        await pickHttpName(planned)
+        mediaNamePlanned = true
+        const tooLong = pathTooLongError(
+          [diskPath, finalPath],
+          process.platform
+        )
+        if (tooLong) throw tooLong
       }
     }
 
@@ -1534,7 +1538,31 @@ function uriBasename(uri: string | undefined): string | null {
   }
 }
 
-/** Host of a URL for diagnostics, or a marker if it doesn't parse. */
+/**
+ * Resolve an HTTP(S) request's first URL through the installed site
+ * resolvers. Null when no resolver claims it, the caller already resolved
+ * it, or resolution is not wired. No try/catch: a claimed URL whose
+ * resolver fails throws MediaResolveError, and falling through would
+ * download the page HTML under the video's name.
+ */
+async function resolveRequestMedia(
+  uris: readonly string[],
+  deps: CreateTaskDeps,
+  opts: AdmittedCreateOptions
+): Promise<ResolvedMediaVariant | null> {
+  if (!deps.mediaResolve || opts.skipMediaResolve) return null
+  const [pageUri] = admitDownloadSources(uris, 'input', [
+    'http',
+    'https',
+    'ftp',
+  ]).map((source) => source.sourceUrl)
+  if (!pageUri || pageUri.startsWith('ftp:')) return null
+  return resolveMediaVariant(deps.mediaResolve, pageUri, {
+    isFfmpegAvailable: async () =>
+      (await deps.media?.isFfmpegAvailable()) ?? false,
+  })
+}
+
 /** Kind, variant and hosts only: stream URLs are signed and never logged. */
 function logMediaSelection(taskId: string, picked: ResolvedMediaVariant): void {
   const source = picked.variant.source
@@ -1615,6 +1643,7 @@ function mediaDispatchFailure(pluginId: string, error: unknown): unknown {
     : error
 }
 
+/** Host of a URL for diagnostics, or a marker if it doesn't parse. */
 function safeHost(u: string): string {
   try {
     return new URL(u).host

@@ -3393,6 +3393,44 @@ describe('handleCreateTask site resolution seam', () => {
     })
   })
 
+  it('resolves outside the output admission and the proxy lease', async () => {
+    let finishResolve: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      finishResolve = resolve
+    })
+    const mediaResolve = fakeMediaResolve(async (url: string) => {
+      if (url !== PAGE) return null
+      await gate
+      return mediaResolution('Clip', directVariant('https://cdn.example/a.mp4'))
+    })
+    const deps = makeDeps()
+    const withMedia = { ...deps, mediaResolve, media: fakeMediaTarget() }
+    const slow = handleCreateTask(pageRequest(), withMedia)
+    await vi.waitFor(() => expect(mediaResolve.resolve).toHaveBeenCalledOnce())
+
+    // A plain paste into the same folder and a proxy change both finish
+    // while the resolver is still working.
+    await handleCreateTask(
+      { ...pageRequest(), uris: ['https://files.example/archive.zip'] },
+      withMedia
+    )
+    expect(deps.addUri).toHaveBeenCalledExactlyOnceWith(
+      ['https://files.example/archive.zip'],
+      expect.anything()
+    )
+    const policy = deps.directResourceProxyPolicy as AppliedDownloadProxyPolicy
+    await expect(
+      policy.applyTransition(async () => ({ downloadProxy: 'unchanged' }))
+    ).resolves.toEqual({ downloadProxy: 'unchanged' })
+
+    finishResolve?.()
+    await slow
+    expect(deps.addUri).toHaveBeenLastCalledWith(
+      ['https://cdn.example/a.mp4'],
+      expect.anything()
+    )
+  })
+
   it('prefers a direct variant when FFmpeg is missing', async () => {
     const mediaResolve = fakeMediaResolve(
       mediaResolution(
