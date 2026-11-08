@@ -115,7 +115,10 @@ function makeDownloaderFake(opts?: {
 function makeDecryptorFake() {
   return {
     decrypt: vi.fn((ct: Uint8Array, _key: Uint8Array, _iv: Uint8Array) => ct),
-    getKey: vi.fn(async (_uri: string) => new Uint8Array(16)),
+    getKey: vi.fn(
+      async (_uri: string, _headers?: Record<string, string>) =>
+        new Uint8Array(16)
+    ),
   }
 }
 
@@ -720,6 +723,26 @@ describe('MediaTaskCoordinator.start', () => {
     expect(phases).toContain(TaskInstancePhase.HlsAudio)
   })
 
+  it('downloads each stream with its own headers when it has them', async () => {
+    const { deps, downloaderFakes } = makeDeps()
+    const job: MediaJob = {
+      ...baseJob(),
+      audio: {
+        container: 'single',
+        segments: [{ url: 'https://audio-cdn/aud.m4a', index: 0 }],
+        isComplete: true,
+        headers: { Referer: 'https://audio.site/' },
+      },
+    }
+
+    await new MediaTaskCoordinator(deps).start(job)
+
+    expect(downloaderFakes.map((fake) => fake.run.mock.calls[0]?.[1])).toEqual([
+      { Referer: 'https://site.com' },
+      { Referer: 'https://audio.site/' },
+    ])
+  })
+
   it('gid=null instances are NOT in engineIndex (poller-safety)', async () => {
     const { deps, taskManager } = makeDeps()
     const c = new MediaTaskCoordinator(deps)
@@ -902,8 +925,54 @@ describe('MediaTaskCoordinator.start', () => {
       rmSpy.mockRestore()
     }
 
-    expect(decryptorFake.getKey).toHaveBeenCalledWith('https://cdn/key')
+    expect(decryptorFake.getKey).toHaveBeenCalledWith('https://cdn/key', {
+      Referer: 'https://site.com',
+    })
     expect(decryptorFake.decrypt).toHaveBeenCalled()
+  })
+
+  it('sends key requests only the allowlisted headers of the key’s stream', async () => {
+    vi.spyOn(fs.promises, 'readFile').mockResolvedValue(Buffer.alloc(16))
+    const { deps, decryptorFake } = makeDeps()
+    const key = (uri: string) => ({
+      method: 'AES-128' as const,
+      uri,
+      iv: new Uint8Array(16),
+    })
+    const job: MediaJob = {
+      ...baseJob(),
+      headers: {
+        Referer: 'https://site.com/watch',
+        'User-Agent': 'UA/1',
+        Cookie: 'sid=secret',
+        Authorization: 'Bearer secret',
+      },
+      video: {
+        container: 'mpegts',
+        segments: [
+          { url: 'https://cdn/v.ts', index: 0, key: key('https://keys/v') },
+        ],
+        isComplete: true,
+      },
+      audio: {
+        container: 'mpegts',
+        segments: [
+          { url: 'https://cdn/a.ts', index: 0, key: key('https://keys/a') },
+        ],
+        isComplete: true,
+        headers: { Origin: 'https://audio.site', Cookie: 'aud=secret' },
+      },
+    }
+
+    await new MediaTaskCoordinator(deps).start(job)
+
+    expect(decryptorFake.getKey.mock.calls).toEqual([
+      [
+        'https://keys/v',
+        { Referer: 'https://site.com/watch', 'User-Agent': 'UA/1' },
+      ],
+      ['https://keys/a', { Origin: 'https://audio.site' }],
+    ])
   })
 
   it('cancel invokes downloader.cancel + ffmpeg.kill and sets Error/mux-aborted', async () => {

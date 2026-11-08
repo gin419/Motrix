@@ -64,9 +64,7 @@ export async function dispatchMediaVariant(
   const source = variant.source
   if (!source) throw new Error('a locked variant cannot be dispatched')
   const headersFor = (declared: Record<string, string> | undefined) =>
-    declared && Object.keys(declared).length > 0
-      ? { ...declared }
-      : { ...(base.fallbackHeaders ?? {}) }
+    hasHeaders(declared) ? { ...declared } : { ...(base.fallbackHeaders ?? {}) }
   if (source.kind === 'direct') {
     return {
       kind: 'rewriteDirect',
@@ -102,6 +100,11 @@ export async function dispatchMediaVariant(
       ...(videoMirrors.length > 0 ? { videoMirrors } : {}),
       ...(audioMirrors.length > 0 ? { audioMirrors } : {}),
       sanitizedHeaders: headersFor(source.video.headers),
+      // An audio leg that declares no headers keeps the video leg's, as a
+      // legacy mux pair always did.
+      ...(hasHeaders(source.audio.headers)
+        ? { audioHeaders: { ...source.audio.headers } }
+        : {}),
       // The contract rejects a ts mux variant.
       container: variant.container === 'mkv' ? 'mkv' : 'mp4',
     }
@@ -122,6 +125,12 @@ export async function dispatchMediaVariant(
           container: variant.container === 'mkv' ? 'mkv' : 'mp4',
         }
   return { kind: 'dispatched', ...(await target.hlsDash.dispatch(adapted)) }
+}
+
+function hasHeaders(
+  headers: Record<string, string> | undefined
+): headers is Record<string, string> {
+  return headers !== undefined && Object.keys(headers).length > 0
 }
 
 function streamUris(stream: StreamRef): string[] {

@@ -88,6 +88,40 @@ describe('dispatchMediaVariant', () => {
     )
   })
 
+  it('sends a mux audio leg its own headers, else the video leg’s', async () => {
+    const own = fakeMediaTarget()
+    const raw = muxVariant('https://cdn.example/v', 'https://audio.example/a', {
+      Referer: 'https://video.example/',
+    })
+    raw.source.audio = {
+      url: 'https://audio.example/a',
+      headers: { Origin: 'https://video.example' },
+    } as typeof raw.source.audio
+    await dispatchMediaVariant(variant(raw), base, own)
+    expect(own.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        sanitizedHeaders: { Referer: 'https://video.example/' },
+        audioHeaders: { Origin: 'https://video.example' },
+      })
+    )
+
+    const shared = fakeMediaTarget()
+    await dispatchMediaVariant(
+      variant(
+        muxVariant('https://cdn.example/v', 'https://cdn.example/a', {
+          Referer: 'https://video.example/',
+        })
+      ),
+      base,
+      shared
+    )
+    const adapted = shared.mux.dispatch.mock.calls[0]?.[0]
+    expect(adapted).toMatchObject({
+      sanitizedHeaders: { Referer: 'https://video.example/' },
+    })
+    expect(adapted).not.toHaveProperty('audioHeaders')
+  })
+
   it.each([
     ['hls', 'ts', 'ts'],
     ['dash', 'ts', 'mp4'],

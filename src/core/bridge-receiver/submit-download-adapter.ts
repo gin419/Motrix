@@ -82,6 +82,8 @@ export interface AdaptedMux {
   videoMirrors?: string[]
   audioMirrors?: string[]
   sanitizedHeaders: Record<string, string>
+  /** Headers for the audio leg alone; absent, it uses `sanitizedHeaders`. */
+  audioHeaders?: Record<string, string>
   container: 'mp4' | 'mkv'
   /** BridgeSourceMeta for bridge-originated mux tasks; null for desktop
    *  Add-Task path (where no extension session context exists). */

@@ -126,6 +126,24 @@ describe('MuxPipeline', () => {
     expect(job.audio?.segments).toEqual([{ url: adapted.audioUrl, index: 0 }])
   })
 
+  it('gives the audio leg its own headers only when it has them', async () => {
+    const coordinator = {
+      submit: vi.fn(async (job: MediaJob) => ({ taskId: job.taskId ?? 'gen' })),
+    }
+    const pipeline = new MuxPipeline({ coordinator })
+    await pipeline.dispatch(
+      makeAdaptedMux({ audioHeaders: { Referer: 'https://audio.example/' } })
+    )
+    await pipeline.dispatch(makeAdaptedMux())
+    const [own, shared] = coordinator.submit.mock.calls.map(
+      ([job]) => job as MediaJob
+    )
+    expect(own?.headers).toEqual({ 'X-Auth': 'tok' })
+    expect(own?.video.headers).toBeUndefined()
+    expect(own?.audio?.headers).toEqual({ Referer: 'https://audio.example/' })
+    expect(shared?.audio?.headers).toBeUndefined()
+  })
+
   it('omits durationSec from job when not present in adapted', async () => {
     const coordinator = {
       submit: vi.fn(async (job: MediaJob) => ({ taskId: job.taskId ?? 'gen' })),

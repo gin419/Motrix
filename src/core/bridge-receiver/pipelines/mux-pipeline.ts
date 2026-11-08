@@ -33,6 +33,7 @@ export class MuxPipeline {
         container: 'single',
         segments: [leg(adapted.audioUrl, adapted.audioMirrors)],
         isComplete: true,
+        ...(adapted.audioHeaders ? { headers: adapted.audioHeaders } : {}),
       },
       headers: adapted.sanitizedHeaders,
       saveDir: adapted.saveDir,

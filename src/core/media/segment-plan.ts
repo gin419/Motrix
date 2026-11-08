@@ -33,6 +33,12 @@ export interface MediaPart {
 
 export interface SegmentPlan {
   container: Container
+  /**
+   * Request headers for this stream only, replacing the job's headers (a
+   * mux audio leg a resolver gave its own headers). Absent, the stream uses
+   * the job's headers.
+   */
+  headers?: Record<string, string>
   init?: InitSegment
   segments: MediaPart[]
   isComplete: boolean
