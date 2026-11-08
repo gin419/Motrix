@@ -1,3 +1,4 @@
+import { VirtualList } from '@renderer/components/desktop-kit/virtual-list/virtual-list'
 import { CheckIcon } from '@renderer/components/icons'
 import { Badge } from '@renderer/components/ui/badge'
 import { Checkbox } from '@renderer/components/ui/checkbox'
@@ -7,7 +8,7 @@ import type {
   MediaPreview,
   MediaPreviewEntry,
 } from '@shared/schemas/media-resolution'
-import { useRef } from 'react'
+import { type ReactNode, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   entryPosition,
@@ -42,6 +43,11 @@ function canPick(
   )
 }
 
+/** Longer collections mount only the rows in view. */
+const VIRTUALIZE_ABOVE = 100
+/** A virtualized row: its name line and one truncated detail line. */
+const VIRTUAL_ROW_HEIGHT = 56
+
 /**
  * The parts of a resolved page, each with a checkbox. Shift-click checks or
  * clears the range from the previously clicked row, as in the torrent file
@@ -63,7 +69,9 @@ export function MediaEntryList({
   )
   const pickedCount = pickable.filter((entry) => selected.has(entry.id)).length
   const allPicked = pickable.length > 0 && pickedCount === pickable.length
+  const virtual = preview.entries.length > VIRTUALIZE_ABOVE
   const translate = (text: MediaText) => t(text.key, text.values)
+  const listLabel = t('task.add.media.picker.parts')
 
   const toggle = (index: number, checked: boolean) => {
     const next = new Set(selected)
@@ -80,6 +88,102 @@ export function MediaEntryList({
     onSelectionChange(next)
   }
 
+  const toggleAll = (checked: boolean) => {
+    const next = new Set(selected)
+    for (const entry of pickable) {
+      if (checked) next.add(entry.id)
+      else next.delete(entry.id)
+    }
+    onSelectionChange(next)
+  }
+
+  const renderRow = (entry: MediaPreviewEntry, index: number): ReactNode => {
+    const position = entryPosition(preview, entry)
+    const rowStatus = status.get(entry.id)
+    const pickableRow = canPick(entry, status, blocked)
+    const unavailable = entry.unavailable
+      ? unavailableText(entry.unavailable.reason, entry.unavailable.message)
+      : blocked.get(entry.id)
+    const name = position
+      ? t('task.add.media.picker.partName', {
+          index: position,
+          title: entry.title,
+        })
+      : entry.title
+    // A virtualized row has a fixed height, so its detail line truncates
+    // and shows in full as a tooltip.
+    const detail = cn('text-xs', virtual && 'truncate')
+    const failure = rowStatus?.kind === 'failed' ? rowStatus.message : null
+    const Row = virtual ? 'div' : 'li'
+    return (
+      <Row
+        key={entry.id}
+        role={virtual ? 'listitem' : undefined}
+        data-entry-id={entry.id}
+        className={cn(
+          'flex items-start gap-2 border-b border-border/60 px-3 py-2',
+          virtual ? 'h-full' : 'last:border-b-0',
+          !pickableRow && 'text-muted-foreground'
+        )}
+      >
+        <Checkbox
+          aria-label={name}
+          className="mt-0.5"
+          checked={selected.has(entry.id) && pickableRow}
+          disabled={disabled || !pickableRow}
+          onClick={(event) => {
+            shift.current = event.shiftKey
+          }}
+          onCheckedChange={(checked) => toggle(index, checked)}
+        />
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate" title={name}>
+              {name}
+            </span>
+            {entry.current && preview.entries.length > 1 && (
+              <Badge variant="secondary">
+                {t('task.add.media.picker.currentPage')}
+              </Badge>
+            )}
+            {entry.durationSec !== undefined && (
+              <span className="ms-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                {formatDurationHMS(entry.durationSec)}
+              </span>
+            )}
+          </div>
+          {unavailable && (
+            <p
+              className={cn(detail, 'text-muted-foreground')}
+              title={virtual ? translate(unavailable) : undefined}
+            >
+              {translate(unavailable)}
+            </p>
+          )}
+          {rowStatus?.kind === 'created' && (
+            <p
+              className={cn(
+                detail,
+                'flex items-center gap-1 text-muted-foreground'
+              )}
+            >
+              <CheckIcon className="size-3 shrink-0" aria-hidden="true" />
+              {t('task.add.media.picker.rowCreated')}
+            </p>
+          )}
+          {failure !== null && (
+            <p
+              className={cn(detail, 'text-destructive')}
+              title={virtual ? failure : undefined}
+            >
+              {failure}
+            </p>
+          )}
+        </div>
+      </Row>
+    )
+  }
+
   return (
     <div className="flex min-h-24 flex-1 flex-col overflow-hidden rounded-md border border-border">
       {preview.entries.length > 1 && (
@@ -89,16 +193,7 @@ export function MediaEntryList({
             checked={allPicked}
             indeterminate={pickedCount > 0 && !allPicked}
             disabled={disabled || pickable.length === 0}
-            onCheckedChange={(checked) =>
-              onSelectionChange(
-                new Set([
-                  ...[...selected].filter(
-                    (id) => !pickable.some((entry) => entry.id === id)
-                  ),
-                  ...(checked ? pickable.map((entry) => entry.id) : []),
-                ])
-              )
-            }
+            onCheckedChange={toggleAll}
           />
           <span className="font-medium">
             {t('task.add.media.picker.selectAll')}
@@ -111,82 +206,20 @@ export function MediaEntryList({
           </span>
         </div>
       )}
-      <ul
-        aria-label={t('task.add.media.picker.parts')}
-        className="min-h-0 flex-1 overflow-auto"
-      >
-        {preview.entries.map((entry, index) => {
-          const position = entryPosition(preview, entry)
-          const rowStatus = status.get(entry.id)
-          const pickableRow = canPick(entry, status, blocked)
-          const unavailable = entry.unavailable
-            ? unavailableText(
-                entry.unavailable.reason,
-                entry.unavailable.message
-              )
-            : blocked.get(entry.id)
-          const name = position
-            ? t('task.add.media.picker.partName', {
-                index: position,
-                title: entry.title,
-              })
-            : entry.title
-          return (
-            <li
-              key={entry.id}
-              data-entry-id={entry.id}
-              className={cn(
-                'flex items-start gap-2 border-b border-border/60 px-3 py-2 last:border-b-0',
-                !pickableRow && 'text-muted-foreground'
-              )}
-            >
-              <Checkbox
-                aria-label={name}
-                className="mt-0.5"
-                checked={selected.has(entry.id) && pickableRow}
-                disabled={disabled || !pickableRow}
-                onClick={(event) => {
-                  shift.current = event.shiftKey
-                }}
-                onCheckedChange={(checked) => toggle(index, checked)}
-              />
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="min-w-0 truncate" title={name}>
-                    {name}
-                  </span>
-                  {entry.current && preview.entries.length > 1 && (
-                    <Badge variant="secondary">
-                      {t('task.add.media.picker.currentPage')}
-                    </Badge>
-                  )}
-                  {entry.durationSec !== undefined && (
-                    <span className="ms-auto shrink-0 text-xs tabular-nums text-muted-foreground">
-                      {formatDurationHMS(entry.durationSec)}
-                    </span>
-                  )}
-                </div>
-                {unavailable && (
-                  <p className="text-xs text-muted-foreground">
-                    {translate(unavailable)}
-                  </p>
-                )}
-                {rowStatus?.kind === 'created' && (
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <CheckIcon className="size-3" aria-hidden="true" />
-                    {t('task.add.media.picker.rowCreated')}
-                  </p>
-                )}
-                {rowStatus?.kind === 'failed' && (
-                  <p className="text-xs text-destructive">
-                    {rowStatus.message}
-                  </p>
-                )}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+      {virtual ? (
+        <VirtualList
+          items={preview.entries}
+          getId={(entry) => entry.id}
+          rowHeight={VIRTUAL_ROW_HEIGHT}
+          className="min-h-0 flex-1"
+          containerProps={{ role: 'list', 'aria-label': listLabel }}
+          renderRow={({ item, index }) => renderRow(item, index)}
+        />
+      ) : (
+        <ul aria-label={listLabel} className="min-h-0 flex-1 overflow-auto">
+          {preview.entries.map(renderRow)}
+        </ul>
+      )}
     </div>
   )
 }

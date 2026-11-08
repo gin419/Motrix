@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import '@renderer/lib/i18n'
 import type { PlatformServices } from '@renderer/platform/services'
@@ -401,6 +401,34 @@ describe('MediaPickerDialog', () => {
       screen.getByRole('checkbox', { name: 'P51 Episode 51' })
     )
     expect(status).toHaveTextContent(/You picked 51 parts/)
+  })
+
+  it('mounts only the visible rows of a long collection', async () => {
+    // jsdom has no layout; give the list's scroller a real height.
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.dataset.testid === 'virtual-list-container' ? 280 : 0
+      })
+    onTestFinished(() => clientHeight.mockRestore())
+    resolveWith({
+      status: 'ok',
+      preview: preview({
+        entries: Array.from({ length: 300 }, (_, i) => entry(i + 1)),
+      }),
+    })
+    renderDialog()
+    await screen.findByText('Sample Series')
+    const rows = within(
+      screen.getByRole('list', { name: 'Parts' })
+    ).getAllByRole('listitem')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.length).toBeLessThan(100)
+
+    // Select all still covers the rows that aren't mounted.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect(screen.getByText('300 of 300 selected')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Download (300)' })).toBeEnabled()
   })
 
   it('keeps created parts and explains each failed one', async () => {
