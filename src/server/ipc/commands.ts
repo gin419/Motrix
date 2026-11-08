@@ -341,6 +341,8 @@ export function buildServerCommandHandlers(
     // without the browser bridge, exactly like the desktop shell.
     mediaResolve: ctx.mediaResolve,
     media: ctx.media,
+    // A picked part reuses the resolution its preview stored.
+    mediaResolutions,
   }
 
   const log = getLogger('server:commands')

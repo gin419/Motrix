@@ -2850,7 +2850,8 @@
         "failure": {
           "timeout": "De site-resolverplug-in reageerde niet op tijd. Probeer het later opnieuw.",
           "noPlayableVariant": "De site-resolverplug-in heeft geen downloadbaar formaat voor deze media gevonden.",
-          "streamUnavailable": "De mediastream die de site-resolverplug-in koos, kon niet worden opgehaald. Probeer het later opnieuw."
+          "streamUnavailable": "De mediastream die de site-resolverplug-in koos, kon niet worden opgehaald. Probeer het later opnieuw.",
+          "variantGone": "De site-resolverplug-in biedt het gekozen deel of de gekozen kwaliteit niet meer aan. Open de keuzelijst opnieuw en kies iets anders."
         }
       },
       "created": "Taak toegevoegd",

@@ -1529,6 +1529,54 @@ describe('server media picker commands', () => {
       })
     ).resolves.toEqual({ cancelled: false })
   })
+
+  it('creates a picked part from the session’s preview inside the allowed folder', async () => {
+    const fixture = pastedMediaPage()
+    const saveDir = await mkdtemp(path.join(os.tmpdir(), 'motrix-pick-'))
+    try {
+      const ctx = {
+        ...makeFakeCtx(),
+        mediaResolve: fixture.mediaResolve,
+        media: fixture.media,
+        taskManager: new TaskManager(),
+        finalNamePicker: {
+          pick: vi.fn(async (_dir: string, name: string) => name),
+        } as unknown as FinalNamePicker,
+      }
+      const handlers = buildServerCommandHandlers(
+        ctx as unknown as ServerCommandContext
+      )
+      const preview = (await handlers[Commands.ResolveMedia]?.(
+        { id: 'session:a', eligible: () => true },
+        { requestId: '00000000-0000-4000-8000-000000000001', url: fixture.page }
+      )) as { preview: { resolutionId: string; defaultEntryId: string } }
+
+      await handlers[Commands.CreateTask]?.({
+        type: 'http',
+        uris: [fixture.page],
+        saveDir,
+        headers: [],
+        mediaPick: {
+          resolutionId: preview.preview.resolutionId,
+          entryId: preview.preview.defaultEntryId,
+          saveToFolder: true,
+        },
+      })
+
+      // The pick reused the preview instead of resolving the page again.
+      expect(fixture.mediaResolve.resolve).toHaveBeenCalledOnce()
+      const folder = path.join(saveDir, 'Example clip')
+      expect(ctx.downloadPathPolicy.prepareSaveDir).toHaveBeenCalledWith(folder)
+      expect(fixture.media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          ...fixture.expectedDispatch,
+          saveDir: folder,
+        })
+      )
+    } finally {
+      await rm(saveDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('server plural task commands', () => {

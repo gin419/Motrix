@@ -1048,7 +1048,8 @@
         "failure": {
           "timeout": "Tiện ích phân giải trang web không phản hồi kịp thời. Hãy thử lại sau.",
           "noPlayableVariant": "Tiện ích phân giải trang web không tìm thấy định dạng nào của nội dung này có thể tải xuống.",
-          "streamUnavailable": "Không thể tải luồng nội dung mà tiện ích phân giải trang web đã chọn. Hãy thử lại sau."
+          "streamUnavailable": "Không thể tải luồng nội dung mà tiện ích phân giải trang web đã chọn. Hãy thử lại sau.",
+          "variantGone": "Tiện ích phân giải trang web không còn cung cấp phần hoặc chất lượng bạn đã chọn. Hãy mở lại bộ chọn và chọn mục khác."
         }
       },
       "createFailedByPlugin": "Không thể tạo tác vụ: tiện ích “{{pluginId}}” đã chặn tác vụ ({{detail}}). Hãy tắt tiện ích đó trong Cài đặt → Tiện ích rồi thử lại.",

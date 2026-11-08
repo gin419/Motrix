@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ResolvedMedia } from './media-resolve-service'
 import {
   createMediaResolutionStore,
@@ -172,5 +172,56 @@ describe('media resolution store running resolves', () => {
     first.end()
     expect(store.begin('r1', 'owner-a')).toEqual({ kind: 'busy' })
     again.end()
+  })
+})
+
+describe('media resolution store refresh', () => {
+  it('shares one load among concurrent refreshes of a record and keeps the result', async () => {
+    const { store, advance } = setup()
+    const record = store.put(media('Old'), 'owner-a')
+    advance(LIMITS.maxTtlMs + 1)
+    let release!: (value: ResolvedMedia) => void
+    const load = vi.fn(
+      () =>
+        new Promise<ResolvedMedia>((resolve) => {
+          release = resolve
+        })
+    )
+    const url = media().sourceUrl
+    const first = store.refresh(record.id, url, load)
+    const second = store.refresh(record.id, url, load)
+    await Promise.resolve()
+    release(media('New'))
+    expect(await first).toBe(await second)
+    expect(load).toHaveBeenCalledOnce()
+    expect(store.get(record.id, 'owner-a')?.media.resolution.title).toBe('New')
+  })
+
+  it('never lets a refresh for another page overwrite a record', async () => {
+    const { store } = setup()
+    const record = store.put(media('Page one'), 'owner-a')
+    const other = {
+      ...media('Page two'),
+      sourceUrl: 'https://video.example/watch/2',
+    }
+    const load = vi.fn(async () => other)
+    await expect(store.refresh(record.id, other.sourceUrl, load)).resolves.toBe(
+      other
+    )
+    expect(store.get(record.id)?.media.resolution.title).toBe('Page one')
+  })
+
+  it('does not share a failed load with later refreshes', async () => {
+    const { store } = setup()
+    const record = store.put(media(), 'owner-a')
+    const url = media().sourceUrl
+    await expect(
+      store.refresh(record.id, url, async () => {
+        throw new Error('resolver down')
+      })
+    ).rejects.toThrow('resolver down')
+    await expect(
+      store.refresh(record.id, url, async () => media('Back'))
+    ).resolves.toMatchObject({ resolution: { title: 'Back' } })
   })
 })

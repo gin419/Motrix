@@ -1048,7 +1048,8 @@
         "failure": {
           "timeout": "站点解析插件未能及时响应。请稍后重试。",
           "noPlayableVariant": "站点解析插件未找到此媒体可下载的格式。",
-          "streamUnavailable": "无法获取站点解析插件选定的媒体流。请稍后重试。"
+          "streamUnavailable": "无法获取站点解析插件选定的媒体流。请稍后重试。",
+          "variantGone": "站点解析插件已不再提供你选择的分段或清晰度。请重新打开选择窗口另选。"
         }
       },
       "createFailedByPlugin": "创建任务失败：插件「{{pluginId}}」中断了任务创建（{{detail}}）。可在「设置 → 插件」中停用该插件后重试。",

@@ -2870,7 +2870,8 @@
         "failure": {
           "timeout": "L’extension de résolution du site n’a pas répondu à temps. Réessayez plus tard.",
           "noPlayableVariant": "L’extension de résolution du site n’a trouvé aucun format téléchargeable pour ce média.",
-          "streamUnavailable": "Le flux choisi par l’extension de résolution du site n’a pas pu être récupéré. Réessayez plus tard."
+          "streamUnavailable": "Le flux choisi par l’extension de résolution du site n’a pas pu être récupéré. Réessayez plus tard.",
+          "variantGone": "L’extension de résolution du site ne propose plus la partie ou la qualité choisie. Rouvrez le sélecteur et choisissez-en une autre."
         }
       },
       "created": "Tâche ajoutée",

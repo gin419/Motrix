@@ -1072,7 +1072,8 @@
         "failure": {
           "timeout": "El plugin de resolución del sitio no respondió a tiempo. Vuelve a intentarlo más tarde.",
           "noPlayableVariant": "El plugin de resolución del sitio no encontró ningún formato descargable para este contenido.",
-          "streamUnavailable": "No se pudo obtener la transmisión que eligió el plugin de resolución del sitio. Vuelve a intentarlo más tarde."
+          "streamUnavailable": "No se pudo obtener la transmisión que eligió el plugin de resolución del sitio. Vuelve a intentarlo más tarde.",
+          "variantGone": "El plugin de resolución del sitio ya no ofrece la parte o la calidad que elegiste. Vuelve a abrir el selector y elige otra."
         }
       },
       "createFailedByPlugin": "No se pudo crear la tarea: el plugin «{{pluginId}}» la detuvo ({{detail}}). Desactiva ese plugin en Ajustes → Plugins y vuelve a intentarlo.",

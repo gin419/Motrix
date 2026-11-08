@@ -127,8 +127,28 @@ describe('selectVariant', () => {
     expect(ok(selectVariant(m, { entryId: 'b', variantId: 'd2' }, true))).toBe(
       'b/d2'
     )
+  })
+
+  it('reports a picked entry or variant that is no longer offered as gone', () => {
+    const m = media([
+      {
+        id: 'a',
+        title: 'A',
+        variants: [mux('m'), direct('d'), locked('4k')],
+      },
+    ])
     expect(() =>
-      selectVariant(m, { entryId: 'b', variantId: 'missing' }, true)
+      selectVariant(m, { entryId: 'a', variantId: 'missing' }, true)
+    ).toThrow(expect.objectContaining({ failure: 'variant-gone' }))
+    expect(() => selectVariant(m, { entryId: 'gone' }, true)).toThrow(
+      expect.objectContaining({ failure: 'variant-gone' })
+    )
+    // Still offered, but not downloadable now: not gone.
+    expect(() =>
+      selectVariant(m, { entryId: 'a', variantId: 'm' }, false)
+    ).toThrow(expect.objectContaining({ failure: 'ffmpeg-required' }))
+    expect(() =>
+      selectVariant(m, { entryId: 'a', variantId: '4k' }, true)
     ).toThrow(expect.objectContaining({ failure: 'no-playable-variant' }))
   })
 

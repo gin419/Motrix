@@ -26,6 +26,7 @@ export const MEDIA_RESOLVE_FAILURES = [
   'no-playable-variant',
   'ffmpeg-required',
   'stream-unavailable',
+  'variant-gone',
 ] as const
 export type MediaResolveFailure = (typeof MEDIA_RESOLVE_FAILURES)[number]
 
@@ -131,3 +132,25 @@ export type ResolveMediaResult =
   | { status: 'cancelled' }
   /** Too many resolves are running; try again once one finishes. */
   | { status: 'busy' }
+
+/**
+ * A create's choice from a preview (`CreateTask.mediaPick`). Without
+ * `variantId`, the best variant that fits `maxHeight` and can run now is
+ * downloaded, as for a plain paste.
+ */
+export const mediaPickSchema = z
+  .object({
+    /** The preview the pick came from; reused while it is still fresh. */
+    resolutionId: z.uuid().optional(),
+    entryId: z.string().min(1).max(ID_CHARS),
+    variantId: z.string().min(1).max(ID_CHARS).optional(),
+    maxHeight: z.number().int().positive().max(100_000).optional(),
+    /**
+     * Save into a folder named after the collection title (see
+     * `MediaPreview.folderName`). Multi-part picks are meant to set it by
+     * default; no picker UI sends a pick yet.
+     */
+    saveToFolder: z.boolean().optional(),
+  })
+  .strict()
+export type MediaPick = z.infer<typeof mediaPickSchema>

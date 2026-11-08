@@ -1770,7 +1770,7 @@ describe('process-scoped media wiring', () => {
     expect(ctx.rpcClient.addUri).not.toHaveBeenCalled()
   })
 
-  it('previews a page for the window that asked, through the sender-aware IPC wrapper', async () => {
+  it('previews a page for the window that asked and creates a pick from it', async () => {
     ipcHandleMock.mockReset()
     const fixture = pastedMediaPage()
     const { ctx } = mediaCtx(false, {
@@ -1802,6 +1802,28 @@ describe('process-scoped media wiring', () => {
     await expect(
       registered(Commands.CancelMediaResolve)(window(8), { requestId })
     ).resolves.toEqual({ cancelled: false })
+
+    // A pick from that preview reuses it instead of resolving the page again.
+    const { preview } = result as {
+      preview: { resolutionId: string; defaultEntryId: string }
+    }
+    await registered(Commands.CreateTask)(
+      {},
+      {
+        type: 'http',
+        uris: [fixture.page],
+        saveDir: tmpdir(),
+        headers: [],
+        mediaPick: {
+          resolutionId: preview.resolutionId,
+          entryId: preview.defaultEntryId,
+        },
+      }
+    )
+    expect(fixture.mediaResolve.resolve).toHaveBeenCalledOnce()
+    expect(fixture.media.mux.dispatch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining(fixture.expectedDispatch)
+    )
     dispose()
   })
 })

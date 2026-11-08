@@ -28,7 +28,8 @@ export function variantRequiresFfmpeg(variant: MediaVariant): boolean {
  * that is not locked, fits `maxHeight` when given, and can run now — a
  * direct source always, mux/hls/dash only with FFmpeg.
  *
- * Throws MediaResolveError: `unavailable` for an unavailable entry,
+ * Throws MediaResolveError: `variant-gone` when the picked entry or
+ * variant is no longer offered, `unavailable` for an unavailable entry,
  * `ffmpeg-required` when only FFmpeg-dependent variants were usable, and
  * `no-playable-variant` otherwise.
  */
@@ -42,7 +43,12 @@ export function selectVariant(
   const entry = pick?.entryId
     ? entries.find((e) => e.id === pick.entryId)
     : (entries.find((e) => e.current) ?? entries[0])
-  if (!entry) throw new MediaResolveError(pluginId, 'no-playable-variant')
+  if (!entry) {
+    throw new MediaResolveError(
+      pluginId,
+      pick?.entryId ? 'variant-gone' : 'no-playable-variant'
+    )
+  }
   if (entry.unavailable) {
     throw new MediaResolveError(
       pluginId,
@@ -68,7 +74,8 @@ export function selectVariant(
 
   if (pick?.variantId) {
     const variant = variants.find((v) => v.id === pick.variantId)
-    if (variant && usable(variant)) return { kind: 'ok', entry, variant }
+    if (!variant) throw new MediaResolveError(pluginId, 'variant-gone')
+    if (usable(variant)) return { kind: 'ok', entry, variant }
   } else {
     const maxHeight = pick?.maxHeight
     const variant = variants.find(

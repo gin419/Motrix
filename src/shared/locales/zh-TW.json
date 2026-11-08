@@ -1048,7 +1048,8 @@
         "failure": {
           "timeout": "網站解析外掛未能及時回應。請稍後重試。",
           "noPlayableVariant": "網站解析外掛找不到此媒體可下載的格式。",
-          "streamUnavailable": "無法取得網站解析外掛選定的媒體串流。請稍後重試。"
+          "streamUnavailable": "無法取得網站解析外掛選定的媒體串流。請稍後重試。",
+          "variantGone": "網站解析外掛已不再提供你選擇的分段或畫質。請重新開啟選擇視窗另選。"
         }
       },
       "createFailedByPlugin": "建立任務失敗：外掛「{{pluginId}}」中斷了任務建立（{{detail}}）。可在「設定 → 外掛」中停用該外掛後重試。",

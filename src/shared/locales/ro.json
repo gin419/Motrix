@@ -2870,7 +2870,8 @@
         "failure": {
           "timeout": "Modulul de rezolvare a site-ului nu a răspuns la timp. Încearcă din nou mai târziu.",
           "noPlayableVariant": "Modulul de rezolvare a site-ului nu a găsit niciun format descărcabil pentru acest conținut.",
-          "streamUnavailable": "Fluxul ales de modulul de rezolvare a site-ului nu a putut fi obținut. Încearcă din nou mai târziu."
+          "streamUnavailable": "Fluxul ales de modulul de rezolvare a site-ului nu a putut fi obținut. Încearcă din nou mai târziu.",
+          "variantGone": "Modulul de rezolvare a site-ului nu mai oferă partea sau calitatea aleasă. Deschideți din nou selectorul și alegeți alta."
         }
       },
       "created": "Sarcină adăugată",

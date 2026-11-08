@@ -25,6 +25,17 @@ export interface MediaResolutionStore {
    * is gone or expired.
    */
   replace(id: string, media: ResolvedMedia): StoredResolution | null
+  /**
+   * Run `load` to resolve `sourceUrl` again for record `id`; concurrent
+   * callers for the same id and URL share one load. The result replaces the
+   * record while it is still held for that URL, so later picks from the
+   * same preview reuse it.
+   */
+  refresh(
+    id: string,
+    sourceUrl: string,
+    load: () => Promise<ResolvedMedia>
+  ): Promise<ResolvedMedia>
   /** Claim a slot for a running resolve. */
   begin(requestId: string, ownerId: string): ResolveSlot
   /** Abort the owner's running resolve `requestId`; false if none ran. */
@@ -79,6 +90,7 @@ export function createMediaResolutionStore(
   const newId = options.newId ?? randomUUID
   // Insertion order is age order: re-set entries move to the end.
   const records = new Map<string, StoredResolution & { storedAt: number }>()
+  const refreshing = new Map<string, Promise<ResolvedMedia>>()
   const running = new Map<string, Running>()
   const earlyCancels = new Map<string, { ownerId: string; at: number }>()
 
@@ -147,6 +159,24 @@ export function createMediaResolutionStore(
       }
       records.set(id, updated)
       return publicRecord(updated)
+    },
+
+    refresh(id, sourceUrl, load) {
+      const key = JSON.stringify([id, sourceUrl])
+      const pending = refreshing.get(key)
+      if (pending) return pending
+      const result = Promise.resolve()
+        .then(load)
+        .then((media) => {
+          const record = records.get(id)
+          if (record?.media.sourceUrl === sourceUrl) {
+            save(id, record.ownerId, media)
+          }
+          return media
+        })
+      refreshing.set(key, result)
+      void result.finally(() => refreshing.delete(key)).catch(() => undefined)
+      return result
     },
 
     begin(requestId, ownerId) {

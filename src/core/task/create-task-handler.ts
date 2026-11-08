@@ -14,12 +14,15 @@ import { getLogger } from '@core/logger'
 import {
   dispatchMediaVariant,
   type MediaDispatchTarget,
+  planMediaFolderName,
   planMediaName,
 } from '@core/media-resolve/dispatch-variant'
 import type { MediaResolveService } from '@core/media-resolve/media-resolve-service'
+import type { MediaResolutionStore } from '@core/media-resolve/resolution-store'
 import {
   type ResolvedMediaVariant,
   resolveMediaVariant,
+  resolvePickedMediaVariant,
 } from '@core/media-resolve/resolve-media-variant'
 import { pickStreamHeaders } from '@core/media-resolve/site-resolution'
 import type { HookAuditLog } from '@core/plugin/hooks/audit-log'
@@ -42,6 +45,7 @@ import type {
   TaskCreateSuccessResult,
 } from '@shared/schemas/add-task'
 import { taskCreateRequestSchema } from '@shared/schemas/add-task'
+import type { MediaPick } from '@shared/schemas/media-resolution'
 import type { BeforeCreateHttpContextDTO } from '@shared/types/plugin-hooks'
 import type {
   DownloadTask,
@@ -215,6 +219,12 @@ export interface CreateTaskDeps {
   mediaResolve?: MediaResolveService
   /** The process media runtime; must be paired with `mediaResolve`. */
   media?: MediaDispatchTarget
+  /**
+   * Resolutions the media picker previewed. A request's `mediaPick` reuses
+   * its preview's resolution while it is fresh instead of resolving the
+   * page again.
+   */
+  mediaResolutions?: Pick<MediaResolutionStore, 'get' | 'refresh' | 'replace'>
   /** Re-adds a terminal BT task against its final layout with integrity
    * checking. Shell command handlers inject the existing reAddTask action. */
   reuseExistingBt?: (taskId: string) => Promise<void>
@@ -334,13 +344,21 @@ async function createAdmittedTask(
     // request URL, so it runs before the output admission and the applied
     // proxy lease: a slow resolver must not hold up other creates into the
     // same folder, or a proxy change.
-    const resolvedMedia = await resolveRequestMedia(
-      parsed.data.uris,
-      deps,
-      opts
-    )
+    const resolvedMedia = await resolveRequestMedia(parsed.data, deps, opts)
     if (resolvedMedia) opts = { ...opts, resolvedMedia }
-    return withBtOutputAdmission(preparedDir, () =>
+    // A multi-part pick may save into a folder named after the collection.
+    // The folder is derived from the resolution, never taken from the
+    // client, and passes the same save-directory preflight as the parent.
+    const folder =
+      resolvedMedia && parsed.data.mediaPick?.saveToFolder
+        ? planMediaFolderName(resolvedMedia.media)
+        : null
+    const saveDir = folder
+      ? deps.prepareSaveDir
+        ? await deps.prepareSaveDir(path.join(preparedDir, folder))
+        : path.join(preparedDir, folder)
+      : preparedDir
+    return withBtOutputAdmission(saveDir, () =>
       policy
         ? policy.runWithSnapshot((snapshot, lease) =>
             handleCreateTaskUnderAdmission(
@@ -349,7 +367,7 @@ async function createAdmittedTask(
               opts,
               snapshot,
               lease.assertCurrent,
-              preparedDir
+              saveDir
             )
           )
         : handleCreateTaskUnderAdmission(
@@ -358,7 +376,7 @@ async function createAdmittedTask(
             opts,
             null,
             undefined,
-            preparedDir
+            saveDir
           )
     )
   }
@@ -1540,27 +1558,49 @@ function uriBasename(uri: string | undefined): string | null {
 
 /**
  * Resolve an HTTP(S) request's first URL through the installed site
- * resolvers. Null when no resolver claims it, the caller already resolved
- * it, or resolution is not wired. No try/catch: a claimed URL whose
+ * resolvers, or the part its `mediaPick` names. Null when no resolver
+ * claims it, the caller already resolved it, the request asked to skip
+ * resolution, or resolution is not wired. No try/catch: a claimed URL whose
  * resolver fails throws MediaResolveError, and falling through would
  * download the page HTML under the video's name.
  */
 async function resolveRequestMedia(
-  uris: readonly string[],
+  request: {
+    uris: readonly string[]
+    mediaResolve?: string
+    mediaPick?: MediaPick
+  },
   deps: CreateTaskDeps,
   opts: AdmittedCreateOptions
 ): Promise<ResolvedMediaVariant | null> {
-  if (!deps.mediaResolve || opts.skipMediaResolve) return null
-  const [pageUri] = admitDownloadSources(uris, 'input', [
+  const pick = request.mediaPick
+  // A pick names a part of a resolved page; downloading the page itself
+  // instead would save HTML under the part's name.
+  const unresolvable = (): null => {
+    if (!pick) return null
+    throw new AppError(
+      ErrorCode.IpcInvalidPayload,
+      'A media pick needs site resolution of an http(s) page'
+    )
+  }
+  const service = deps.mediaResolve
+  if (!service || opts.skipMediaResolve || request.mediaResolve === 'skip')
+    return unresolvable()
+  const [pageUri] = admitDownloadSources(request.uris, 'input', [
     'http',
     'https',
     'ftp',
   ]).map((source) => source.sourceUrl)
-  if (!pageUri || pageUri.startsWith('ftp:')) return null
-  return resolveMediaVariant(deps.mediaResolve, pageUri, {
-    isFfmpegAvailable: async () =>
-      (await deps.media?.isFfmpegAvailable()) ?? false,
-  })
+  if (!pageUri || pageUri.startsWith('ftp:')) return unresolvable()
+  const isFfmpegAvailable = async () =>
+    (await deps.media?.isFfmpegAvailable()) ?? false
+  if (pick) {
+    return resolvePickedMediaVariant(service, pageUri, pick, {
+      isFfmpegAvailable,
+      ...(deps.mediaResolutions ? { store: deps.mediaResolutions } : {}),
+    })
+  }
+  return resolveMediaVariant(service, pageUri, { isFfmpegAvailable })
 }
 
 /** Kind, variant and hosts only: stream URLs are signed and never logged. */

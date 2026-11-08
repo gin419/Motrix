@@ -376,6 +376,9 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     publishTaskUpdateNow,
   } = ctx
 
+  // Resolutions the media picker previewed, for this process's lifetime.
+  const mediaResolutions = createMediaResolutionStore()
+
   const createDeps: CreateTaskDeps = {
     adapter,
     directResourceValidator: new DirectResourceValidatorService(),
@@ -417,10 +420,10 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     mediaResolve,
     // Same process-scoped pipelines and live FFmpeg check as the receiver.
     media,
+    // A picked part reuses the resolution its preview stored.
+    mediaResolutions,
   }
 
-  // Resolutions the media picker previewed, for this process's lifetime.
-  const mediaResolutions = createMediaResolutionStore()
   const mediaPicker = createMediaPicker({
     service: mediaResolve,
     store: mediaResolutions,
