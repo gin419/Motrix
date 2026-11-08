@@ -45,6 +45,7 @@ describe('MediaResolveError message', () => {
     ['invalid-result', 'task.add.mediaResolveFailed'],
     ['timeout', 'task.add.media.failure.timeout'],
     ['no-playable-variant', 'task.add.media.failure.noPlayableVariant'],
+    ['stream-unavailable', 'task.add.media.failure.streamUnavailable'],
     ['ffmpeg-required', 'settings.integration.media.ffmpegRequired'],
   ] as const)('explains the %s failure', (failure, key) => {
     expect(new MediaResolveError('p', failure).message).toBe(key)

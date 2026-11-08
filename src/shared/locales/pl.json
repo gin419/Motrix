@@ -1082,7 +1082,8 @@
         },
         "failure": {
           "timeout": "Wtyczka rozpoznawania witryny nie odpowiedziała na czas. Spróbuj ponownie później.",
-          "noPlayableVariant": "Wtyczka rozpoznawania witryny nie znalazła formatu tego materiału, który można pobrać."
+          "noPlayableVariant": "Wtyczka rozpoznawania witryny nie znalazła formatu tego materiału, który można pobrać.",
+          "streamUnavailable": "Nie udało się pobrać strumienia wybranego przez wtyczkę rozpoznawania witryny. Spróbuj ponownie później."
         }
       },
       "createFailedByPlugin": "Nie udało się utworzyć zadania: wtyczka „{{pluginId}}” je zatrzymała ({{detail}}). Wyłącz tę wtyczkę w Ustawienia → Wtyczki i spróbuj ponownie.",

@@ -1058,7 +1058,8 @@
         },
         "failure": {
           "timeout": "Das Website-Resolver-Plugin hat nicht rechtzeitig geantwortet. Versuchen Sie es später erneut.",
-          "noPlayableVariant": "Das Website-Resolver-Plugin hat für dieses Medium kein herunterladbares Format gefunden."
+          "noPlayableVariant": "Das Website-Resolver-Plugin hat für dieses Medium kein herunterladbares Format gefunden.",
+          "streamUnavailable": "Der vom Website-Resolver-Plugin gewählte Medienstream konnte nicht abgerufen werden. Versuchen Sie es später erneut."
         }
       },
       "createFailedByPlugin": "Die Aufgabe konnte nicht erstellt werden: Das Plugin „{{pluginId}}“ hat sie gestoppt ({{detail}}). Deaktivieren Sie dieses Plugin unter Einstellungen → Plugins und versuchen Sie es erneut.",

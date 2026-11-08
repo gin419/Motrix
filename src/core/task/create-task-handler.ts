@@ -1591,13 +1591,19 @@ function mergeStreamHeaders(
 /**
  * A pipeline that refuses a resolved variant fails the create with the
  * resolver's attribution and a reason the user can read: FFmpeg that
- * vanished between selection and dispatch, or a playlist the resolver
- * offered that turns out encrypted or live. Other errors pass unchanged.
+ * vanished between selection and dispatch, a manifest or stream that could
+ * not be fetched, a playlist with nothing playable, or one that turns out
+ * encrypted or live. Nothing was created, so each is a definite rejection.
+ * Other errors pass unchanged.
  */
 function mediaDispatchFailure(pluginId: string, error: unknown): unknown {
   if (!(error instanceof BridgeReceiverError)) return error
   if (error.code === 'unsupported-kind')
     return new MediaResolveError(pluginId, 'ffmpeg-required', error)
+  if (error.code === 'transient-failure')
+    return new MediaResolveError(pluginId, 'stream-unavailable', error)
+  if (error.code === 'unsupported-master')
+    return new MediaResolveError(pluginId, 'no-playable-variant', error)
   const reason =
     error.code === 'unsupported-encryption'
       ? 'encrypted'

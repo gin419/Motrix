@@ -1058,7 +1058,8 @@
         },
         "failure": {
           "timeout": "Site çözümleyici eklentisi zamanında yanıt vermedi. Daha sonra tekrar deneyin.",
-          "noPlayableVariant": "Site çözümleyici eklentisi bu medya için indirilebilir bir biçim bulamadı."
+          "noPlayableVariant": "Site çözümleyici eklentisi bu medya için indirilebilir bir biçim bulamadı.",
+          "streamUnavailable": "Site çözümleyici eklentisinin seçtiği medya akışı alınamadı. Daha sonra tekrar deneyin."
         }
       },
       "createFailedByPlugin": "Görev oluşturulamadı: “{{pluginId}}” eklentisi işlemi durdurdu ({{detail}}). Ayarlar → Eklentiler bölümünden bu eklentiyi devre dışı bırakıp tekrar deneyin.",

@@ -1070,7 +1070,8 @@
         },
         "failure": {
           "timeout": "Il plugin di risoluzione del sito non ha risposto in tempo. Riprova più tardi.",
-          "noPlayableVariant": "Il plugin di risoluzione del sito non ha trovato alcun formato scaricabile per questo contenuto."
+          "noPlayableVariant": "Il plugin di risoluzione del sito non ha trovato alcun formato scaricabile per questo contenuto.",
+          "streamUnavailable": "Impossibile recuperare il flusso scelto dal plugin di risoluzione del sito. Riprova più tardi."
         }
       },
       "createFailedByPlugin": "Impossibile creare l’attività: il plugin “{{pluginId}}” l’ha bloccata ({{detail}}). Disattiva il plugin in Impostazioni → Plugin, quindi riprova.",

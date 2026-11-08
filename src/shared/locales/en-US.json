@@ -1058,7 +1058,8 @@
         },
         "failure": {
           "timeout": "The site resolver plugin didn’t respond in time. Try again later.",
-          "noPlayableVariant": "The site resolver plugin found no downloadable format for this media."
+          "noPlayableVariant": "The site resolver plugin found no downloadable format for this media.",
+          "streamUnavailable": "The media stream the site resolver plugin chose couldn’t be fetched. Try again later."
         }
       },
       "createFailedByPlugin": "Couldn’t create the task: the plugin “{{pluginId}}” stopped it ({{detail}}). Disable that plugin under Settings → Plugins, then try again.",

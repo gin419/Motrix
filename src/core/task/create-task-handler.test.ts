@@ -9,7 +9,7 @@ import {
 } from '@core/proxy/applied-download-proxy-policy'
 import { proxyToDownloadRequestOptions } from '@core/proxy/serializers'
 import { encode } from '@motrix/torrent'
-import { AppError, ErrorCode } from '@shared/errors'
+import { AppError, ErrorCode, MEDIA_RESOLVE_MESSAGE_KEYS } from '@shared/errors'
 import { DEFAULT_ENGINE_SETTINGS } from '@shared/schemas/engine-settings'
 import { DEFAULT_PROXY_SETTINGS } from '@shared/schemas/proxy-settings'
 import type { EngineFeatureReport } from '@shared/types/engine'
@@ -3588,6 +3588,47 @@ describe('handleCreateTask site resolution seam', () => {
           media,
         })
       ).rejects.toMatchObject({ failure: 'unavailable', message: key })
+    }
+  )
+
+  it.each([
+    [
+      'transient-failure',
+      'manifest fetch failed: HTTP 403',
+      'stream-unavailable',
+      'task.add.media.failure.streamUnavailable',
+    ],
+    [
+      'unsupported-master',
+      'no video representation',
+      'no-playable-variant',
+      'task.add.media.failure.noPlayableVariant',
+    ],
+  ] as const)(
+    'turns a pipeline %s for a resolved variant into a reasoned rejection',
+    async (code, detail, failure, key) => {
+      const mediaResolve = fakeMediaResolve(
+        mediaResolution(
+          'Clip',
+          manifestVariant('dash', 'https://cdn.example/a.mpd')
+        )
+      )
+      const media = fakeMediaTarget()
+      media.hlsDash.dispatch.mockRejectedValue(
+        new BridgeReceiverError(code, detail)
+      )
+      const rejection = handleCreateTask(pageRequest(), {
+        ...makeDeps(),
+        mediaResolve,
+        media,
+      })
+      await expect(rejection).rejects.toBeInstanceOf(MediaResolveError)
+      await expect(rejection).rejects.toMatchObject({
+        code: ErrorCode.MediaResolveFailed,
+        failure,
+        message: key,
+      })
+      expect(MEDIA_RESOLVE_MESSAGE_KEYS.has(key)).toBe(true)
     }
   )
 

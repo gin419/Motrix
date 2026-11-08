@@ -2848,7 +2848,8 @@
         },
         "failure": {
           "timeout": "Programtillegget for nettstedsoppslag svarte ikke i tide. Prøv igjen senere.",
-          "noPlayableVariant": "Programtillegget for nettstedsoppslag fant ikke noe nedlastbart format for dette mediet."
+          "noPlayableVariant": "Programtillegget for nettstedsoppslag fant ikke noe nedlastbart format for dette mediet.",
+          "streamUnavailable": "Mediestrømmen som programtillegget for nettstedsoppslag valgte, kunne ikke hentes. Prøv igjen senere."
         }
       },
       "created": "Oppgaven er lagt til",

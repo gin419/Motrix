@@ -106,7 +106,11 @@ export interface BridgeReceiverDeps {
 
 /** The receiver error code closest to a site resolution failure. */
 function mediaFailureCode(error: MediaResolveError): BridgeErrorCode {
-  if (error.failure === 'command-failed' || error.failure === 'timeout')
+  if (
+    error.failure === 'command-failed' ||
+    error.failure === 'timeout' ||
+    error.failure === 'stream-unavailable'
+  )
     return 'transient-failure'
   if (error.failure !== 'unavailable') return 'unsupported-kind'
   switch (error.reason) {

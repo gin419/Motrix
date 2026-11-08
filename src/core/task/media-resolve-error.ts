@@ -10,6 +10,8 @@ import { AppError, ErrorCode, mediaResolveMessageKey } from '@shared/errors'
  * - `no-playable-variant`: no variant of the chosen entry can be downloaded
  *   by the consumer.
  * - `ffmpeg-required`: the only usable variants need FFmpeg, which is absent.
+ * - `stream-unavailable`: the chosen variant's manifest or stream could not
+ *   be fetched when the pipeline took it over.
  *
  * The message is the i18n key that explains the failure: one per known
  * unavailability reason, one per host-side failure, and a shared key for a
@@ -22,6 +24,7 @@ export type MediaResolveFailure =
   | 'unavailable'
   | 'no-playable-variant'
   | 'ffmpeg-required'
+  | 'stream-unavailable'
 
 /**
  * A site resolver claimed the URL (enabled, resolve-command marker present,

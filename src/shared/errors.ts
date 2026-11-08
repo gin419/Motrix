@@ -126,6 +126,7 @@ export const MEDIA_UNAVAILABLE_REASONS = Object.keys(
 const MEDIA_FAILURE_KEYS: Readonly<Record<string, string>> = {
   timeout: 'task.add.media.failure.timeout',
   'no-playable-variant': 'task.add.media.failure.noPlayableVariant',
+  'stream-unavailable': 'task.add.media.failure.streamUnavailable',
   'ffmpeg-required': 'settings.integration.media.ffmpegRequired',
 }
 

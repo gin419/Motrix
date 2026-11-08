@@ -2868,7 +2868,8 @@
         },
         "failure": {
           "timeout": "El connector de resolució del lloc no ha respost a temps. Torneu-ho a provar més tard.",
-          "noPlayableVariant": "El connector de resolució del lloc no ha trobat cap format baixable per a aquest contingut."
+          "noPlayableVariant": "El connector de resolució del lloc no ha trobat cap format baixable per a aquest contingut.",
+          "streamUnavailable": "No s’ha pogut obtenir el flux que ha triat el connector de resolució del lloc. Torneu-ho a provar més tard."
         }
       },
       "created": "S'ha afegit la tasca",

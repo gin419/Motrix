@@ -1058,7 +1058,8 @@
         },
         "failure": {
           "timeout": "A webhelyfeloldó bővítmény nem válaszolt időben. Próbáld újra később.",
-          "noPlayableVariant": "A webhelyfeloldó bővítmény nem talált letölthető formátumot ehhez a tartalomhoz."
+          "noPlayableVariant": "A webhelyfeloldó bővítmény nem talált letölthető formátumot ehhez a tartalomhoz.",
+          "streamUnavailable": "A webhelyfeloldó bővítmény által választott médiafolyam nem kérhető le. Próbáld újra később."
         }
       },
       "createFailedByPlugin": "Nem sikerült létrehozni a feladatot: a(z) „{{pluginId}}” bővítmény leállította ({{detail}}). Tiltsd le ezt a bővítményt a Beállítások → Bővítmények alatt, majd próbáld újra.",
