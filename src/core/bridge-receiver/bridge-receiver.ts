@@ -12,6 +12,7 @@ import { assembleSegments } from '@core/media/segment-assembler'
 import { SegmentDecryptor } from '@core/media/segment-decryptor'
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
+import { admitHttpSource } from '@core/task/source-admission'
 import type { TaskManager } from '@core/task/task-manager'
 import {
   type DownloadSubmitParams,
@@ -399,6 +400,11 @@ export class BridgeReceiver {
         throw error
       }
       if (m) {
+        // Resolver output is a task source, not a plugin HTTP request: apply
+        // the same admission the desktop Add-Task path applies, before any
+        // name pick or pipeline work.
+        const videoUrl = admitHttpSource(m.videoUrl)
+        const audioUrl = admitHttpSource(m.audioUrl)
         if (!this.mux) {
           throw new BridgeReceiverError(
             'unsupported-kind',
@@ -420,8 +426,8 @@ export class BridgeReceiver {
           taskId: adapted.taskId,
           saveDir: adapted.saveDir,
           finalName,
-          videoUrl: m.videoUrl,
-          audioUrl: m.audioUrl,
+          videoUrl,
+          audioUrl,
           sanitizedHeaders: m.headers
             ? stripHopByHopHeaders(m.headers)
             : adapted.sanitizedHeaders,

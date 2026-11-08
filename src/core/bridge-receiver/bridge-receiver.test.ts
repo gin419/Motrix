@@ -4,6 +4,7 @@ import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
 import type { SegmentAria2 } from '@core/download/segment-downloader'
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
+import { DownloadSourceError } from '@core/task/source-admission'
 import { TaskManager } from '@core/task/task-manager'
 import { ErrorCodes } from '@motrix/mdxp'
 import { Events } from '@shared/protocol/events'
@@ -675,6 +676,40 @@ describe('BridgeReceiver', () => {
       })
       expect(deps.createTask).not.toHaveBeenCalled()
     })
+
+    it.each([
+      ['a non-http scheme', 'ftp://cdn.example/video.m4s'],
+      ['embedded credentials', 'https://user:secret@cdn.example/video.m4s'],
+    ])(
+      'rejects resolver stream URLs with %s before any mux dispatch',
+      async (_label, videoUrl) => {
+        const resolveToMux = vi.fn(async () => ({
+          videoUrl,
+          audioUrl: 'https://cdn.example/audio.m4s',
+          container: 'mp4' as const,
+        }))
+        const deps = fakeDeps({
+          ffmpegBinaryPath: '/usr/bin/ffmpeg',
+          fetchManifest: vi.fn(async () => ''),
+          taskManager: new TaskManager(),
+          segmentAria2: fakeSegmentAria2,
+          resolveToMux,
+        })
+        const r = new BridgeReceiver(deps as never)
+        const mux = (
+          r as unknown as {
+            mux: { dispatch: (...a: unknown[]) => Promise<{ taskId: string }> }
+          }
+        ).mux
+        const muxDispatchSpy = vi.spyOn(mux, 'dispatch')
+
+        await expect(r.handle(directParams, extCtx)).rejects.toBeInstanceOf(
+          DownloadSourceError
+        )
+        expect(muxDispatchSpy).not.toHaveBeenCalled()
+        expect(deps.createTask).not.toHaveBeenCalled()
+      }
+    )
 
     it('resolveToMux absent (undefined) falls through to direct dispatch (full no-regression)', async () => {
       // When resolveToMux is not set at all, direct submit proceeds as before
