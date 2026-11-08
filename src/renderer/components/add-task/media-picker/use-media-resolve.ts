@@ -151,14 +151,22 @@ export function useMediaResolve() {
     []
   )
 
-  /** End the session; a running resolve is cancelled on the host. */
-  const close = useCallback(() => {
+  /**
+   * End the session: a running resolve is cancelled on the host and late
+   * replies are ignored, but the last state stays for the exit animation.
+   */
+  const cancel = useCallback(() => {
     session.current += 1
     pageUrl.current = null
     stopRunning()
+  }, [stopRunning])
+
+  /** End the session and forget its state. */
+  const close = useCallback(() => {
+    cancel()
     setEntries(NO_ENTRIES)
     setState({ phase: 'idle' })
-  }, [stopRunning])
+  }, [cancel])
 
   useEffect(
     () => () => {
@@ -168,5 +176,5 @@ export function useMediaResolve() {
     [stopRunning]
   )
 
-  return { state, entries, resolve, loadEntries, close }
+  return { state, entries, resolve, loadEntries, cancel, close }
 }

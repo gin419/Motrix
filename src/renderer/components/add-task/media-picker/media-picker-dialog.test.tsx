@@ -12,6 +12,7 @@ import type {
   MediaPreviewVariant,
   ResolveMediaResult,
 } from '@shared/schemas/media-resolution'
+import { holdExitAnimation } from '@test-utils/hold-exit-animation'
 import {
   type HttpTaskCreateRequest,
   MediaPickerDialog,
@@ -173,6 +174,22 @@ describe('MediaPickerDialog', () => {
     pending.resolve({ status: 'ok', preview: preview() })
     await Promise.resolve()
     expect(screen.queryByText('Sample Series')).not.toBeInTheDocument()
+  })
+
+  it('keeps showing the parts while the dialog animates closed', async () => {
+    resolveWith({ status: 'ok', preview: preview() })
+    const { onClose, rerender } = renderDialog()
+    await screen.findByText('Sample Series')
+    const popup = screen.getByRole('dialog')
+    const content = popup.textContent
+    const finishExit = holdExitAnimation(popup)
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onClose).toHaveBeenCalled()
+    rerender(null)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(popup.textContent).toBe(content)
+    expect(screen.queryByText(/Reading the page/)).not.toBeInTheDocument()
+    await finishExit()
   })
 
   it('ignores the reply of a resolve the user moved away from', async () => {

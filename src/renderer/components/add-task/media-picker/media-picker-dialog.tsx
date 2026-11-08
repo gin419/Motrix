@@ -12,6 +12,7 @@ import {
 import { Label } from '@renderer/components/ui/label'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
+import { useExitSnapshot } from '@renderer/hooks/use-exit-snapshot'
 import { usePlatformServices } from '@renderer/platform/services'
 import type { TaskCreateRequest } from '@shared/schemas/add-task'
 import type { MediaPreview } from '@shared/schemas/media-resolution'
@@ -105,21 +106,25 @@ export function MediaPickerDialog({
   const { t } = useTranslation()
   const platform = usePlatformServices()
   const createTask = useCreateMediaTask()
-  const { state, entries, resolve, loadEntries, close } = useMediaResolve()
+  const { state, entries, resolve, loadEntries, cancel, close } =
+    useMediaResolve()
   const [creating, setCreating] = useState(false)
   const [pageFileError, setPageFileError] = useState<string | null>(null)
   const pageFileRequestId = useRef<string | null>(null)
+  const open = target !== null
   const url = target?.url ?? null
+  // What the dialog shows; it keeps the last page while animating closed.
+  const shown = useExitSnapshot(open, target)
 
   useEffect(() => {
     if (url === null) {
-      close()
+      cancel()
       return
     }
     pageFileRequestId.current = null
     setPageFileError(null)
     void resolve(url)
-  }, [url, resolve, close])
+  }, [url, resolve, cancel])
 
   const retry = useCallback(() => {
     if (url !== null) void resolve(url)
@@ -172,9 +177,12 @@ export function MediaPickerDialog({
 
   return (
     <Dialog
-      open={target !== null}
-      onOpenChange={(open) => {
-        if (!open && !creating) onClose()
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !creating) onClose()
+      }}
+      onOpenChangeComplete={(next) => {
+        if (!next) close()
       }}
     >
       <DialogContent
@@ -182,10 +190,10 @@ export function MediaPickerDialog({
         showCloseButton={false}
         className="flex max-h-[min(40rem,calc(100dvh-2rem))] flex-col gap-4 sm:max-w-lg"
       >
-        {state.phase === 'ready' && url !== null ? (
+        {state.phase === 'ready' && shown !== null ? (
           <ReadyView
-            key={url}
-            url={url}
+            key={shown.url}
+            url={shown.url}
             preview={state.preview}
             entries={entries}
             creating={creating}
@@ -198,7 +206,7 @@ export function MediaPickerDialog({
         ) : (
           <StatusView
             state={state.phase === 'ready' ? { phase: 'resolving' } : state}
-            pluginName={target?.pluginName ?? ''}
+            pluginName={shown?.pluginName ?? ''}
             creating={creating}
             pageFileError={pageFileError}
             onClose={onClose}
