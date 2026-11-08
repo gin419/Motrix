@@ -10,6 +10,7 @@ import { newTaskId } from '@core/lib/ids'
 import { fetchManifest } from '@core/media/manifest-fetcher'
 import { assembleSegments } from '@core/media/segment-assembler'
 import { SegmentDecryptor } from '@core/media/segment-decryptor'
+import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
 import type { TaskManager } from '@core/task/task-manager'
 import {
@@ -139,7 +140,9 @@ export interface BridgeReceiverDeps {
    * YouTube watch page or bilibili page, this is called before kind-routing.
    * If it returns a mux pair the direct submit is transparently re-routed to
    * the MuxPipeline. Absent or returning null → direct download proceeds.
-   * All error handling lives in the bootstrap factory (returns null on failure).
+   * A matching resolver that fails throws MediaResolveError; the submit is
+   * then rejected with appCode `media-resolve-failed` instead of downloading
+   * the page as a direct file.
    * An optional cookieHeader (2nd arg) is forwarded when the submit carries
    * cookies (bilibili HD path). Omitted for YouTube and desktop submits.
    */
@@ -361,8 +364,9 @@ export class BridgeReceiver {
     // Submit-path pre-resolve: if the adapted result is a direct download and
     // a resolveToMux factory is wired (bootstrap only), call it. On a non-null
     // mux pair the direct submit is transparently re-routed to MuxPipeline.
-    // resolveToMux owns its own error handling (catches → null), so we never
-    // wrap this in try/catch here — a null means "proceed as direct".
+    // A null means "no resolver claimed this URL — proceed as direct". A
+    // MediaResolveError means a resolver claimed it and failed: reject the
+    // submit rather than saving the page HTML under the video's name.
     //
     // Cookie handoff (bilibili HD): when the extension submits a direct download
     // with cookies (e.g. SESSDATA for bilibili), serialize them into a Cookie
@@ -375,7 +379,25 @@ export class BridgeReceiver {
           : []
       const serialized = serializeCookieHeader(rawCookies)
       const cookieHeader = serialized || undefined
-      const m = await this.deps.resolveToMux(adapted.primaryUrl, cookieHeader)
+      let m: Awaited<
+        ReturnType<NonNullable<BridgeReceiverDeps['resolveToMux']>>
+      >
+      try {
+        m = await this.deps.resolveToMux(adapted.primaryUrl, cookieHeader)
+      } catch (error) {
+        if (error instanceof MediaResolveError) {
+          throw makeMdxpError(
+            ErrorCodes.AdapterError,
+            'Media page could not be resolved',
+            {
+              appCode: 'media-resolve-failed',
+              retryable: error.failure === 'command-failed',
+              context: { pluginId: error.pluginId, failure: error.failure },
+            }
+          )
+        }
+        throw error
+      }
       if (m) {
         if (!this.mux) {
           throw new BridgeReceiverError(

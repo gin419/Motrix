@@ -1043,6 +1043,7 @@
       "clearSelection": "Auswahl aufheben",
       "createFailed": "Die Download-Aufgabe konnte nicht erstellt werden.",
       "createFailedWithReason": "Die Download-Aufgabe konnte nicht erstellt werden: {{reason}}",
+      "mediaResolveFailed": "Das Website-Resolver-Plugin konnte diese Seite nicht auslesen, daher wurde sie nicht heruntergeladen. Versuchen Sie es später erneut oder aktualisieren Sie das Plugin.",
       "createFailedByPlugin": "Die Aufgabe konnte nicht erstellt werden: Das Plugin „{{pluginId}}“ hat sie gestoppt ({{detail}}). Deaktivieren Sie dieses Plugin unter Einstellungen → Plugins und versuchen Sie es erneut.",
       "createFailedPathTooLong": "Die Aufgabe konnte nicht erstellt werden: Der Zielpfad ist {{length}} Zeichen lang und überschreitet das Windows-Limit von {{limit}}. Wählen Sie einen kürzeren Speicherpfad oder Dateinamen.",
       "parseFailed": "Die Torrent-Datei konnte nicht eingelesen werden.",

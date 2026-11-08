@@ -1043,6 +1043,7 @@
       "clearSelection": "Seçimi temizle",
       "createFailed": "İndirme görevi oluşturulamadı.",
       "createFailedWithReason": "İndirme görevi oluşturulamadı: {{reason}}",
+      "mediaResolveFailed": "Site çözümleyici eklentisi bu sayfayı okuyamadı, bu nedenle sayfa indirilmedi. Daha sonra tekrar deneyin veya eklentiyi güncelleyin.",
       "createFailedByPlugin": "Görev oluşturulamadı: “{{pluginId}}” eklentisi işlemi durdurdu ({{detail}}). Ayarlar → Eklentiler bölümünden bu eklentiyi devre dışı bırakıp tekrar deneyin.",
       "createFailedPathTooLong": "Görev oluşturulamadı: hedef yol {{length}} karakter uzunluğunda ve Windows’un {{limit}} karakter sınırını aşıyor. Daha kısa bir kayıt klasörü yolu veya dosya adı seçin.",
       "parseFailed": "Torrent dosyası ayrıştırılamadı.",

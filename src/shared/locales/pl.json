@@ -1067,6 +1067,7 @@
       "clearSelection": "Wyczyść zaznaczenie",
       "createFailed": "Nie udało się utworzyć zadania pobierania.",
       "createFailedWithReason": "Nie udało się utworzyć zadania pobierania: {{reason}}",
+      "mediaResolveFailed": "Wtyczka rozpoznawania witryny nie mogła odczytać tej strony, więc nie została ona pobrana. Spróbuj ponownie później lub zaktualizuj wtyczkę.",
       "createFailedByPlugin": "Nie udało się utworzyć zadania: wtyczka „{{pluginId}}” je zatrzymała ({{detail}}). Wyłącz tę wtyczkę w Ustawienia → Wtyczki i spróbuj ponownie.",
       "createFailedPathTooLong": "Nie udało się utworzyć zadania: liczba znaków w ścieżce docelowej ({{length}}) przekracza limit w systemie Windows ({{limit}}). Wybierz krótszą ścieżkę folderu zapisu lub nazwę pliku.",
       "parseFailed": "Nie udało się odczytać pliku torrent.",

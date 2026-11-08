@@ -8,6 +8,8 @@ export enum ErrorCode {
   EngineProcessTerminationFailed = 'ENGINE_PROCESS_TERMINATION_FAILED',
   TaskCreateFailed = 'TASK_CREATE_FAILED',
   TaskSourceInvalid = 'TASK_SOURCE_INVALID',
+  /** A matching site-resolver plugin failed; the page is not downloaded. */
+  MediaResolveFailed = 'MEDIA_RESOLVE_FAILED',
   TaskNotFound = 'TASK_NOT_FOUND',
   TaskRevealFailed = 'TASK_REVEAL_FAILED',
   TaskOpenFailed = 'TASK_OPEN_FAILED',

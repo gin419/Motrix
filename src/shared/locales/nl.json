@@ -2833,6 +2833,7 @@
       "createFailedByPlugin": "De taak kon niet worden aangemaakt: de plug-in ‘{{pluginId}}’ heeft deze tegengehouden ({{detail}}). Schakel die plug-in uit onder Instellingen → Plug-ins en probeer het opnieuw.",
       "createFailedPathTooLong": "De taak kon niet worden aangemaakt: het doelpad bevat {{length}} tekens, meer dan de Windows-limiet van {{limit}}. Kies een kortere opslagmap of bestandsnaam.",
       "createFailedWithReason": "De downloadtaak kon niet worden aangemaakt: {{reason}}",
+      "mediaResolveFailed": "De site-resolverplug-in kon deze pagina niet lezen, dus er is niets gedownload. Probeer het later opnieuw of werk de plug-in bij.",
       "created": "Taak toegevoegd",
       "createdCopy": "Afzonderlijke kopie toegevoegd",
       "createdPartial": "{{ok}} toegevoegd · {{failed}} mislukt",

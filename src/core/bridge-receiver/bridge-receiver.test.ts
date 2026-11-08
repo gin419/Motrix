@@ -2,6 +2,7 @@ import { NOOP_TASK_ACTIVITY_RECORDER } from '@core/activity'
 import { principalKey } from '@core/bridge/credential-store'
 import type { MdxpSessionContext } from '@core/bridge/mdxp-session-context'
 import type { SegmentAria2 } from '@core/download/segment-downloader'
+import { MediaResolveError } from '@core/task/media-resolve-error'
 import { MediaTaskCoordinator } from '@core/task/media-task-coordinator'
 import { TaskManager } from '@core/task/task-manager'
 import { ErrorCodes } from '@motrix/mdxp'
@@ -635,6 +636,44 @@ describe('BridgeReceiver', () => {
         'https://www.youtube.com/watch?v=abc',
         undefined
       )
+    })
+
+    it('rejects the submit when a matching resolver fails instead of downloading the page directly', async () => {
+      const resolveToMux = vi.fn(async () => {
+        throw new MediaResolveError(
+          'community.site-resolver',
+          'command-failed',
+          new Error('timed out')
+        )
+      })
+      const deps = fakeDeps({ resolveToMux })
+      const r = new BridgeReceiver(deps as never)
+
+      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
+        code: ErrorCodes.AdapterError,
+        data: {
+          appCode: 'media-resolve-failed',
+          retryable: true,
+          context: {
+            pluginId: 'community.site-resolver',
+            failure: 'command-failed',
+          },
+        },
+      })
+      expect(deps.createTask).not.toHaveBeenCalled()
+    })
+
+    it('marks an invalid resolver result as not retryable', async () => {
+      const resolveToMux = vi.fn(async () => {
+        throw new MediaResolveError('community.site-resolver', 'invalid-result')
+      })
+      const deps = fakeDeps({ resolveToMux })
+      const r = new BridgeReceiver(deps as never)
+
+      await expect(r.handle(directParams, extCtx)).rejects.toMatchObject({
+        data: { appCode: 'media-resolve-failed', retryable: false },
+      })
+      expect(deps.createTask).not.toHaveBeenCalled()
     })
 
     it('resolveToMux absent (undefined) falls through to direct dispatch (full no-regression)', async () => {

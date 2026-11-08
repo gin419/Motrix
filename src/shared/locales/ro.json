@@ -2853,6 +2853,7 @@
       "createFailedByPlugin": "Sarcina nu a putut fi creată: modulul „{{pluginId}}” a oprit-o ({{detail}}). Dezactivează modulul din Setări → Module, apoi încearcă din nou.",
       "createFailedPathTooLong": "Sarcina nu a putut fi creată: calea de destinație are {{length}} de caractere, depășind limita Windows de {{limit}}. Alege un dosar de salvare sau un nume de fișier mai scurt.",
       "createFailedWithReason": "Sarcina de descărcare nu a putut fi creată: {{reason}}",
+      "mediaResolveFailed": "Modulul de rezolvare a site-ului nu a putut citi această pagină, așa că nu a fost descărcată. Încearcă din nou mai târziu sau actualizează modulul.",
       "created": "Sarcină adăugată",
       "createdCopy": "Copie separată adăugată",
       "createdPartial": "Adăugate: {{ok}} · Eșuate: {{failed}}",

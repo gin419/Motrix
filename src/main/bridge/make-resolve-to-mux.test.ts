@@ -1,3 +1,5 @@
+import { MediaResolveError } from '@core/task/media-resolve-error'
+import { AppError, ErrorCode } from '@shared/errors'
 import { describe, expect, it, vi } from 'vitest'
 import { makeResolveToMux } from './index'
 
@@ -280,5 +282,138 @@ describe('makeResolveToMux — generalized multi-resolver routing', () => {
       'community.bilibili-resolver.resolve',
       { url: BILI, cookies: 'SESSDATA=x' }
     )
+  })
+
+  describe('a matching resolver that fails never degrades to a plain download', () => {
+    const site = (spec: { id: string; origin?: 'builtin' | 'community' }) =>
+      plugin({ ...spec, hostPermissions: ['*://*.site.com/*'] })
+
+    it('throws MediaResolveError when the only matching resolver throws', async () => {
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand: vi.fn().mockRejectedValue(new Error('boom')),
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      const rejection = resolve('https://www.site.com/x')
+      await expect(rejection).rejects.toBeInstanceOf(MediaResolveError)
+      await expect(rejection).rejects.toMatchObject({
+        code: ErrorCode.MediaResolveFailed,
+        pluginId: 'community.site-resolver',
+        failure: 'command-failed',
+      })
+    })
+
+    it('treats a command timeout as a failure', async () => {
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand: vi
+          .fn()
+          .mockRejectedValue(
+            new AppError(ErrorCode.PluginTimeout, 'command timed out')
+          ),
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      await expect(resolve('https://www.site.com/x')).rejects.toMatchObject({
+        failure: 'command-failed',
+      })
+    })
+
+    it('treats a failed activation as a failure', async () => {
+      const invokeCommand = vi.fn()
+      const pluginHost = {
+        activate: vi.fn().mockRejectedValue(new Error('circuit open')),
+        invokeCommand,
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      await expect(resolve('https://www.site.com/x')).rejects.toBeInstanceOf(
+        MediaResolveError
+      )
+      expect(invokeCommand).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['an unsupported kind', { kind: 'hls', url: 'https://c/x.m3u8' }],
+      [
+        'a mux result without an audio url',
+        { kind: 'mux', video: { url: 'https://c/v' }, audio: {} },
+      ],
+      [
+        'an unsupported container',
+        {
+          kind: 'mux',
+          video: { url: 'https://c/v' },
+          audio: { url: 'https://c/a' },
+          container: 'avi',
+        },
+      ],
+      ['a non-object', 'https://c/v'],
+    ])('throws invalid-result for %s', async (_label, result) => {
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand: vi.fn().mockResolvedValue(result),
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      await expect(resolve('https://www.site.com/x')).rejects.toMatchObject({
+        pluginId: 'community.site-resolver',
+        failure: 'invalid-result',
+      })
+    })
+
+    it('reports the first failure when a later candidate only declines', async () => {
+      const invokeCommand = vi.fn(async (id: string) => {
+        if (id === 'motrix.a-resolver') throw new Error('boom')
+        return null
+      })
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand,
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(
+          site({ id: 'community.b-resolver', origin: 'community' }),
+          site({ id: 'motrix.a-resolver', origin: 'builtin' })
+        ),
+        pluginHost
+      )
+      await expect(resolve('https://www.site.com/x')).rejects.toMatchObject({
+        pluginId: 'motrix.a-resolver',
+      })
+      expect(invokeCommand).toHaveBeenCalledTimes(2)
+    })
+
+    it('returns null when every matching resolver declines', async () => {
+      const pluginHost = {
+        activate: vi.fn().mockResolvedValue(undefined),
+        invokeCommand: vi.fn().mockResolvedValue(null),
+      } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      expect(await resolve('https://www.site.com/x')).toBeNull()
+    })
+
+    it('does not consult a failing resolver for URLs outside its hostPermissions', async () => {
+      const invokeCommand = vi.fn().mockRejectedValue(new Error('boom'))
+      const pluginHost = { activate: vi.fn(), invokeCommand } as any
+      const resolve = makeResolveToMux(
+        fakeRegistry(site({ id: 'community.site-resolver' })),
+        pluginHost
+      )
+      expect(await resolve('https://example.com/file.zip')).toBeNull()
+      expect(invokeCommand).not.toHaveBeenCalled()
+    })
   })
 })

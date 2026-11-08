@@ -2853,6 +2853,7 @@
       "createFailedByPlugin": "No s'ha pogut crear la tasca: el connector «{{pluginId}}» l'ha aturada ({{detail}}). Desactiveu aquest connector a Configuració → Connectors i torneu-ho a provar.",
       "createFailedPathTooLong": "No s'ha pogut crear la tasca: el camí de destinació té {{length}} caràcters i supera el límit de {{limit}} del Windows. Trieu un camí de carpeta o un nom de fitxer més curt.",
       "createFailedWithReason": "No s'ha pogut crear la tasca de baixada: {{reason}}",
+      "mediaResolveFailed": "El connector de resolució del lloc no ha pogut llegir aquesta pàgina, així que no s'ha baixat. Torneu-ho a provar més tard o actualitzeu el connector.",
       "created": "S'ha afegit la tasca",
       "createdCopy": "S'ha afegit una còpia independent",
       "createdPartial": "Afegides: {{ok}} · Fallides: {{failed}}",

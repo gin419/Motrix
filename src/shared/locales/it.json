@@ -1055,6 +1055,7 @@
       "clearSelection": "Cancella selezione",
       "createFailed": "Impossibile creare l’attività di download.",
       "createFailedWithReason": "Impossibile creare l’attività di download: {{reason}}",
+      "mediaResolveFailed": "Il plugin di risoluzione del sito non è riuscito a leggere questa pagina, quindi non è stata scaricata. Riprova più tardi o aggiorna il plugin.",
       "createFailedByPlugin": "Impossibile creare l’attività: il plugin “{{pluginId}}” l’ha bloccata ({{detail}}). Disattiva il plugin in Impostazioni → Plugin, quindi riprova.",
       "createFailedPathTooLong": "Impossibile creare l’attività: il percorso di destinazione contiene {{length}} caratteri e supera il limite di Windows di {{limit}}. Scegli un percorso di salvataggio o un nome file più corto.",
       "parseFailed": "Impossibile analizzare il file torrent.",

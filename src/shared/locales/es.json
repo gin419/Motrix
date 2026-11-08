@@ -1055,6 +1055,7 @@
       "clearSelection": "Borrar selección",
       "createFailed": "No se pudo crear la tarea de descarga.",
       "createFailedWithReason": "No se pudo crear la tarea de descarga: {{reason}}",
+      "mediaResolveFailed": "El plugin de resolución del sitio no pudo leer esta página, así que no se descargó. Vuelve a intentarlo más tarde o actualiza el plugin.",
       "createFailedByPlugin": "No se pudo crear la tarea: el plugin «{{pluginId}}» la detuvo ({{detail}}). Desactiva ese plugin en Ajustes → Plugins y vuelve a intentarlo.",
       "createFailedPathTooLong": "No se pudo crear la tarea: la ruta de destino tiene {{length}} caracteres y supera el límite de {{limit}} de Windows. Elige una carpeta o un nombre de archivo más corto.",
       "parseFailed": "No se pudo analizar el archivo torrent.",

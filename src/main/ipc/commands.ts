@@ -405,6 +405,8 @@ export function buildCommandHandlers(ctx: CommandContext): CommandHandlerMap {
     // vs bridge bootstrap order never matters. When the bridge is disabled or
     // not yet started, resolveToMux returns null → HTTP fallback; dispatchMux
     // is only called when resolveToMux returns non-null (seam gates on both).
+    // A matching resolver that fails throws MediaResolveError instead, which
+    // surfaces as a task-creation error rather than downloading the page.
     // By design the desktop path passes NO cookie header (2nd arg omitted):
     // the app has no browser bilibili session, so desktop paste stays ≤480p.
     // Bilibili HD comes via the extension submit path, which carries cookies.

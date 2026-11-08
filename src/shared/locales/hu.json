@@ -1043,6 +1043,7 @@
       "clearSelection": "Kijelölés törlése",
       "createFailed": "A letöltési feladat létrehozása sikertelen.",
       "createFailedWithReason": "A letöltési feladat létrehozása sikertelen: {{reason}}",
+      "mediaResolveFailed": "A webhelyfeloldó bővítmény nem tudta beolvasni ezt az oldalt, ezért nem lett letöltve. Próbáld újra később, vagy frissítsd a bővítményt.",
       "createFailedByPlugin": "Nem sikerült létrehozni a feladatot: a(z) „{{pluginId}}” bővítmény leállította ({{detail}}). Tiltsd le ezt a bővítményt a Beállítások → Bővítmények alatt, majd próbáld újra.",
       "createFailedPathTooLong": "Nem sikerült létrehozni a feladatot: a cél elérési útja {{length}} karakter hosszú, ami meghaladja a Windows {{limit}} karakteres korlátját. Válassz rövidebb mentési útvonalat vagy fájlnevet.",
       "parseFailed": "A torrentfájl feldolgozása sikertelen.",

@@ -123,7 +123,7 @@ function notifyTaskCreateFailure(
 ): void {
   if (
     reason &&
-    /^task\.storage\.(incomplete|resumeFailed|errors\.(unavailable|busy|destination|conflict|engine|failed|cancelled))$/.test(
+    /^task\.(storage\.(incomplete|resumeFailed|errors\.(unavailable|busy|destination|conflict|engine|failed|cancelled))|add\.mediaResolveFailed)$/.test(
       reason
     )
   ) {

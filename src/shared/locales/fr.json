@@ -2853,6 +2853,7 @@
       "createFailedByPlugin": "Impossible de créer la tâche : l’extension « {{pluginId}} » l’a bloquée ({{detail}}). Désactivez cette extension dans Paramètres → Extensions, puis réessayez.",
       "createFailedPathTooLong": "Impossible de créer la tâche : le chemin de destination contient {{length}} caractères et dépasse la limite Windows de {{limit}}. Choisissez un dossier de destination ou un nom de fichier plus court.",
       "createFailedWithReason": "Impossible de créer la tâche de téléchargement : {{reason}}",
+      "mediaResolveFailed": "L’extension de résolution du site n’a pas pu lire cette page ; elle n’a donc pas été téléchargée. Réessayez plus tard ou mettez à jour l’extension.",
       "created": "Tâche ajoutée",
       "createdCopy": "Copie distincte ajoutée",
       "createdPartial": "Ajouts : {{ok}} · Échecs : {{failed}}",

@@ -200,7 +200,9 @@ export interface CreateTaskDeps {
    * resolves to a mux pair (video + audio), the download is routed to the
    * MuxPipeline instead of the normal HTTP engine path. Both deps must be
    * present for the seam to fire; absence of either → unchanged HTTP path.
-   * Errors are owned by the factory (returns null → HTTP fallback).
+   * Returns null when no resolver claims the URL (→ unchanged HTTP path) and
+   * throws MediaResolveError when a matching resolver fails; that error
+   * propagates as a task-creation failure so the page is never downloaded.
    * The optional cookieHeader arg is for bilibili HD (desktop Add-Task path
    * passes no cookies — only the extension submit path forwards them).
    */
@@ -772,8 +774,10 @@ async function handleCreateTaskUnderAdmission(
     // taskId/saveDir/finalName, then delegate to MuxPipeline and return — the
     // entire HTTP/beforeCreate/engine path is bypassed for this URL.
     // On null (non-resolver URL, bridge disabled, plugin not enabled) → fall
-    // through to the unchanged HTTP path. No try/catch here: the factory owns
-    // error handling (returns null on failure).
+    // through to the unchanged HTTP path. No try/catch here: when a matching
+    // resolver fails the factory throws MediaResolveError, which must reach
+    // the caller as a creation failure — falling through would download the
+    // page HTML under the video's name.
     if (deps.resolveToMux && deps.dispatchMux) {
       const uri = params.uris[0]
       if (uri) {
