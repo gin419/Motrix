@@ -91,6 +91,28 @@ describe('dispatchMediaVariant', () => {
     }
   )
 
+  it('uses the fallback headers only for a stream that declares none', async () => {
+    const fallbackHeaders = { Referer: 'https://video.example/page' }
+    const declared = await dispatchMediaVariant(
+      variant(
+        directVariant('https://cdn.example/a.mp4', {
+          headers: { Origin: 'https://video.example' },
+        })
+      ),
+      { ...base, fallbackHeaders },
+      undefined
+    )
+    expect(declared).toMatchObject({
+      headers: { Origin: 'https://video.example' },
+    })
+    const bare = await dispatchMediaVariant(
+      variant(directVariant('https://cdn.example/a.mp4')),
+      { ...base, fallbackHeaders },
+      undefined
+    )
+    expect(bare).toMatchObject({ headers: fallbackHeaders })
+  })
+
   it('rejects a pipeline variant without a media runtime as unsupported-kind', async () => {
     await expect(
       dispatchMediaVariant(

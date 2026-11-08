@@ -47,6 +47,20 @@ const ALLOWED_STREAM_HEADERS: ReadonlySet<string> = new Set(
   STREAM_HEADER_ALLOWLIST
 )
 
+/**
+ * The allowlisted subset of request headers that were meant for another
+ * URL (the page), safe to send on a stream request the resolver chose.
+ */
+export function pickStreamHeaders(
+  headers: Readonly<Record<string, string>> | undefined
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers ?? {}).filter(([name]) =>
+      ALLOWED_STREAM_HEADERS.has(name.toLowerCase())
+    )
+  )
+}
+
 const L = SITE_RESOLUTION_LIMITS
 
 const idSchema = z.string().min(1).max(L.idChars)

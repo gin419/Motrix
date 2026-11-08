@@ -28,6 +28,12 @@ export interface MediaDispatchBase {
   sourceMeta: SourceMeta
   receipt?: CreateRequestReceipt
   durationSec?: number
+  /**
+   * Headers for a stream that declares none, already allowlisted by the
+   * caller (an extension submit's browser headers). Absent, such a stream
+   * is requested without headers.
+   */
+  fallbackHeaders?: Record<string, string>
 }
 
 export type MediaDispatchOutcome =
@@ -57,11 +63,15 @@ export async function dispatchMediaVariant(
 ): Promise<MediaDispatchOutcome> {
   const source = variant.source
   if (!source) throw new Error('a locked variant cannot be dispatched')
+  const headersFor = (declared: Record<string, string> | undefined) =>
+    declared && Object.keys(declared).length > 0
+      ? { ...declared }
+      : { ...(base.fallbackHeaders ?? {}) }
   if (source.kind === 'direct') {
     return {
       kind: 'rewriteDirect',
       uris: streamUris(source.stream),
-      headers: { ...(source.stream.headers ?? {}) },
+      headers: headersFor(source.stream.headers),
     }
   }
   if (!target) {
@@ -86,7 +96,7 @@ export async function dispatchMediaVariant(
       kind: 'mux',
       videoUrl: source.video.url,
       audioUrl: source.audio.url,
-      sanitizedHeaders: { ...(source.video.headers ?? {}) },
+      sanitizedHeaders: headersFor(source.video.headers),
       // The contract rejects a ts mux variant.
       container: variant.container === 'mkv' ? 'mkv' : 'mp4',
     }
@@ -94,7 +104,7 @@ export async function dispatchMediaVariant(
   }
   const manifest = {
     manifestUrl: source.manifest.url,
-    sanitizedHeaders: { ...(source.manifest.headers ?? {}) },
+    sanitizedHeaders: headersFor(source.manifest.headers),
   }
   const adapted: AdaptedHls | AdaptedDash =
     source.kind === 'hls'

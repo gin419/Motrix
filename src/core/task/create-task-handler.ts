@@ -21,7 +21,7 @@ import {
   type ResolvedMediaVariant,
   resolveMediaVariant,
 } from '@core/media-resolve/resolve-media-variant'
-import { STREAM_HEADER_ALLOWLIST } from '@core/media-resolve/site-resolution'
+import { pickStreamHeaders } from '@core/media-resolve/site-resolution'
 import type { HookAuditLog } from '@core/plugin/hooks/audit-log'
 import type { HookOrchestrator } from '@core/plugin/hooks/hook-orchestrator'
 import type { StagedMetadataOp } from '@core/plugin/hooks/staged-effects'
@@ -1587,8 +1587,6 @@ function logMediaSelection(taskId: string, picked: ResolvedMediaVariant): void {
   )
 }
 
-const STREAM_HEADERS: ReadonlySet<string> = new Set(STREAM_HEADER_ALLOWLIST)
-
 /**
  * Stream headers under the request's own: an allowlisted header the user
  * supplied wins, matched case-insensitively; every other user header is
@@ -1603,9 +1601,8 @@ function mergeStreamHeaders(
   for (const [name, value] of Object.entries(stream)) {
     merged.set(name.toLowerCase(), [name, value])
   }
-  for (const [name, value] of Object.entries(user ?? {})) {
-    const key = name.toLowerCase()
-    if (STREAM_HEADERS.has(key)) merged.set(key, [name, value])
+  for (const [name, value] of Object.entries(pickStreamHeaders(user))) {
+    merged.set(name.toLowerCase(), [name, value])
   }
   const userAgent = merged.get('user-agent')?.[1]
   merged.delete('user-agent')

@@ -714,6 +714,39 @@ describe('BridgeReceiver', () => {
       }
     })
 
+    it.each([
+      [
+        'mux',
+        muxVariant('https://cdn.example/v.mp4', 'https://cdn.example/a.mp4'),
+      ],
+      ['hls', manifestVariant('hls', 'https://cdn.example/hls')],
+    ] as const)(
+      'requests a %s stream that declares no headers with the allowlisted browser headers',
+      async (kind, variant) => {
+        const { deps, receiver } = mediaDeps(mediaResolution('Clip', variant))
+        const target =
+          kind === 'mux' ? mediaOf(deps).mux : mediaOf(deps).hlsDash
+        const spy = vi
+          .spyOn(target, 'dispatch')
+          .mockResolvedValue({ taskId: 'media-1' })
+        const params = structuredClone(directParams)
+        params.selection.primary.headers = {
+          Referer: 'https://video.example/watch/abc',
+          'User-Agent': 'Browser/1',
+          Authorization: 'Bearer page-token',
+          'x-custom': 'val',
+        } as typeof params.selection.primary.headers
+        await receiver.handle(params, extCtx)
+        const adapted = spy.mock.calls[0]?.[0] as {
+          sanitizedHeaders: Record<string, string>
+        }
+        expect(adapted.sanitizedHeaders).toEqual({
+          Referer: 'https://video.example/watch/abc',
+          'User-Agent': 'Browser/1',
+        })
+      }
+    )
+
     it('downloads a resolved direct variant as a direct task without the page cookies', async () => {
       const { deps, receiver } = mediaDeps(
         mediaResolution(

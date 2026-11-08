@@ -13,6 +13,7 @@ import {
   type ResolvedMediaVariant,
   resolveMediaVariant,
 } from '@core/media-resolve/resolve-media-variant'
+import { pickStreamHeaders } from '@core/media-resolve/site-resolution'
 import { MediaResolveError } from '@core/task/media-resolve-error'
 import { pathTooLongError } from '@core/task/path-length'
 import {
@@ -320,13 +321,17 @@ export class BridgeReceiver {
         finalName,
         sourceMeta: adapted.sourceMeta,
         ...(durationSec != null ? { durationSec } : {}),
+        // A stream without its own headers is requested like the browser
+        // requested the page, minus anything beyond the stream allowlist
+        // (no Authorization or custom headers; cookies never travel here).
+        fallbackHeaders: pickStreamHeaders(adapted.sanitizedHeaders),
       },
       this.deps.media
     )
     if (outcome.kind === 'dispatched') return { taskId: outcome.taskId }
     // A progressive stream: a plain direct download of the resolved file.
-    // The page's cookies stay with the resolver; the stream gets only the
-    // allowlisted headers it declared.
+    // The page's cookies stay with the resolver; the stream gets only
+    // allowlisted headers.
     const [primaryUrl = adapted.primaryUrl, ...mirrorUrls] = outcome.uris
     const resolved: AdaptedDirect = {
       ...adapted,
